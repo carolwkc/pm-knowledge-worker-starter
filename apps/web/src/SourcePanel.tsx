@@ -6,10 +6,12 @@ export function SourcePanel({
   source,
   loading,
   browsing = false,
+  context,
 }: {
   source: OpenSource | null;
   loading: boolean;
   browsing?: boolean;
+  context?: 'proposal' | 'decision';
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
   const mark = useRef<HTMLElement>(null);
@@ -32,7 +34,9 @@ export function SourcePanel({
             ? 'Opening the source…'
             : browsing
               ? 'Choose a document to inspect its original text and version history.'
-              : 'Choose a citation after asking a question to inspect its original text and context.'}
+              : context
+                ? `Choose a ${context} to inspect its original source evidence.`
+                : 'Choose a citation after asking a question to inspect its original text and context.'}
         </p>
       </aside>
     );
@@ -57,7 +61,7 @@ export function SourcePanel({
         {!version.source_is_latest && (
           <p className="notice">
             {citation
-              ? 'A newer version exists. This is the version cited by the answer.'
+              ? `A newer version exists. This is the version cited by the ${source.context ?? 'answer'}.`
               : 'A newer version exists. You are viewing a historical version.'}
           </p>
         )}

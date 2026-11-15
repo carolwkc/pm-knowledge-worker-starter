@@ -266,6 +266,39 @@ main {
   padding-top: 1.5rem;
   overflow-wrap: anywhere;
 }
+.record-detail,
+.review-form,
+.review-confirmation,
+.generation-panel {
+  border-top: 1px solid #ccd6e4;
+  padding-top: 1.5rem;
+  margin-top: 1.5rem;
+  overflow-wrap: anywhere;
+}
+.record-quote {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+blockquote.record-quote {
+  margin: 1rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid #90b5ff;
+}
+.record-metadata dt {
+  font-size: 0.8rem;
+  color: #52647a;
+  margin-top: 0.6rem;
+}
+.record-metadata dd {
+  margin-left: 0;
+  overflow-wrap: anywhere;
+}
+.review-confirmation {
+  padding: 1rem;
+  background: #edf3fc;
+  border: 1px solid #adbacb;
+  border-radius: 6px;
+}
 .retry-button {
   display: block;
   margin-top: 0.75rem;

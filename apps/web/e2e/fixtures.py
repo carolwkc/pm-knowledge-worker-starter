@@ -26,8 +26,10 @@ def main() -> None:
         if payload["action"] == "create":
             owner = create_user(session, PREFIX + " owner")
             reader = create_user(session, PREFIX + " reader")
+            editor = create_user(session, PREFIX + " editor")
             _, owner_token = issue_token(session, owner.id)
             reader_record, reader_token = issue_token(session, reader.id)
+            _, editor_token = issue_token(session, editor.id)
             aurora = Workspace(name=PREFIX + " Aurora")
             orbit = Workspace(name=PREFIX + " Orbit")
             session.add_all([aurora, orbit])
@@ -37,14 +39,16 @@ def main() -> None:
                     WorkspaceMembership(workspace_id=aurora.id, user_id=owner.id, role="owner"),
                     WorkspaceMembership(workspace_id=orbit.id, user_id=owner.id, role="owner"),
                     WorkspaceMembership(workspace_id=aurora.id, user_id=reader.id, role="reader"),
+                    WorkspaceMembership(workspace_id=aurora.id, user_id=editor.id, role="editor"),
                 ]
             )
             result = {
                 "ownerToken": owner_token,
                 "readerToken": reader_token,
+                "editorToken": editor_token,
                 "readerTokenId": str(reader_record.id),
                 "workspaces": [str(aurora.id), str(orbit.id)],
-                "users": [str(owner.id), str(reader.id)],
+                "users": [str(owner.id), str(reader.id), str(editor.id)],
             }
         elif payload["action"] == "revoke":
             revoke_token(session, UUID(payload["tokenId"]))
