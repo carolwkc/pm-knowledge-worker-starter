@@ -111,7 +111,30 @@ as well as the existing workspace/latest-version predicates. HTTP service entryp
 also check the required role before document processing or inference. Memberships
 and tokens are checked afresh each request; there are no permission/answer caches.
 
-## Later knowledge entities
+## Task 004 decision proposals and review
+
+- `knowledge_proposal`: UUID, indexed workspace FK, immutable chunk FK and exact
+  `statement`, `extractor_version`, original `created_by` user FK and timestamp,
+  check-constrained pending/approved/rejected status. Unique `(chunk_id, extractor_version)`.
+- `review_event`: UUID, unique proposal FK, reviewer user FK, check-constrained
+  approve/reject action, optional comment and timestamp. One terminal event per proposal.
+- `approved_decision`: UUID, indexed workspace FK, unique proposal FK and publication
+  timestamp. Statement/citation resolve through the immutable proposal and source joins;
+  approval attribution resolves through its review event.
+
+Workspace/source parents cascade derived records on privileged deletion. Actor FKs
+preserve attribution by preventing deletion of referenced users; there is no HTTP
+user deletion endpoint. Scoping and quote equality are enforced by services, not
+cross-table database checks. Direct privileged SQL remains outside API guarantees.
+Statuses, review rows and publication are committed together. Same-action retries
+never overwrite attribution or create another review/decision. Review history is
+append-only through the API, with no editing/reopening/withdrawal in this slice.
+
+Migration `0004` neither backfills nor rewrites existing records. Downgrade removes
+only Task 004 tables. Old source versions and accepted decisions remain stored;
+`source_is_latest` is computed from version numbering, not an automatic supersession.
+
+## Later knowledge entities (beyond Task 004)
 
 strategy, customer, insight, opportunity, initiative, decision, evidence, competitor, entity_relation, review_event.
 

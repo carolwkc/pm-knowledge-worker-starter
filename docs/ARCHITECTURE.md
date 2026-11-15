@@ -88,6 +88,27 @@ database credentials. Original workspaces receive no automatic owner during migr
 Backfill remains an operator operation; evaluation creates a synthetic identity and
 membership inside its rolled-back fixture transaction. See [Task 003](TASK_003.md).
 
+### Task 004 decision review
+
+Editors explicitly request extraction from a specified latest source version.
+The deterministic `decision-marker-v1` rule selects unchanged source chunks;
+proposals are stored separately from evidence and never execute source instructions.
+Owners approve/reject immutable quotations, including their own proposals. A single
+transaction stores the terminal review and, on approval, one decision record.
+
+Generation acquires a workspace key-share lock before its source update lock, matching
+the order of explicit locks and foreign-key checks. It rechecks editor access after waiting.
+Review locks workspace → source → proposal, rechecks acting ownership after the
+workspace lock, and checks freshness after the source lock. This serializes review
+against membership writers, other reviews and concurrent version ingestion. Stale
+pending approvals fail with 409. Rejections and same-action terminal retries retain
+history; previously approved records expose a computed source freshness flag.
+
+Members read decisions; editors/owners also read proposal queues. Every service
+requires identity and workspace access and scopes its data joins to that workspace.
+Search/ask remain independent of this derived review layer. No external model, frontend,
+automatic promotion, source mutation or external write is introduced.
+
 ## Ingestion flow
 
 Authenticate user → verify editor/owner membership → validate file & workspace scope → save source metadata → parse text → hash/deduplicate → create version and chunks → index → return source/version identifiers.

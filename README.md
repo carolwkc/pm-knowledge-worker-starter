@@ -1,8 +1,9 @@
 # PM Knowledge Worker
 
 An evidence-first product knowledge API for product managers, designers, and tech leads.
-Tasks 001–003 provide Markdown/text ingestion, immutable provenance, authenticated
-workspace access, keyword/semantic/hybrid search, and deterministic quoted answers.
+Tasks 001–004 provide Markdown/text ingestion, immutable provenance, authenticated
+workspace access, keyword/semantic/hybrid search, deterministic quoted answers,
+and explicitly reviewed decision quotations.
 All supplied content is synthetic. Local CPU embeddings are opt-in; keyword mode
 remains the default.
 
@@ -84,9 +85,9 @@ role. All documents in a workspace inherit that workspace's access:
 
 | Role | Access |
 | --- | --- |
-| `reader` | Search and ask |
-| `editor` | Reader access plus uploads and source versions |
-| `owner` | Editor access plus listing, granting, changing and removing memberships |
+| `reader` | Search, ask and read approved decisions |
+| `editor` | Reader access plus uploads, source versions and generating/inspecting proposals |
+| `owner` | Editor access plus approving/rejecting proposals and managing memberships |
 
 Owners manage already provisioned users through `/members/{user_id}` (see the API
 table below). They can promote another owner before removing/demoting themselves.
@@ -169,6 +170,12 @@ spend too long correlating logs during incidents.` It does not infer a new concl
 | `POST /api/v1/workspaces/{workspace_id}/sources/{source_id}/versions` | Multipart `file` | `201` new version or `200` existing identical version |
 | `GET /api/v1/workspaces/{workspace_id}/search` | Query `q`, optional `limit` (default 5, range 1–20), `mode` | `200 {results:[...]}` ranked excerpts |
 | `POST /api/v1/workspaces/{workspace_id}/ask` | JSON `{question, limit?, mode?}` | `200 {answer, status, sources}`; at most three quoted citations |
+| `POST /api/v1/workspaces/{workspace_id}/sources/{source_id}/versions/{version_id}/proposals` | Editor/owner token; specified latest version | `200 {proposals, created_count}` |
+| `GET /api/v1/workspaces/{workspace_id}/proposals` | Editor/owner token; `status`, `limit`, `offset` | `200 {proposals}`; default pending |
+| `GET /api/v1/workspaces/{workspace_id}/proposals/{proposal_id}` | Editor/owner token | `200` proposal, evidence and review |
+| `POST /api/v1/workspaces/{workspace_id}/proposals/{proposal_id}/review` | Owner token; JSON `{action: "approve" or "reject", comment?}` | `200` updated proposal with nullable `decision_id` |
+| `GET /api/v1/workspaces/{workspace_id}/decisions` | Member token; `limit`, `offset` | `200 {decisions}`; approved records only |
+| `GET /api/v1/workspaces/{workspace_id}/decisions/{decision_id}` | Member token | `200` decision, evidence, approval attribution and freshness |
 
 Ingestion receipts contain `workspace_id`, `source_document_id`, `document_version_id`,
 `version_number`, `sha256`, `chunk_count`, and `duplicate`. Names/titles have a 200-character
@@ -196,6 +203,86 @@ the requested workspace return `404`; malformed requests return `422`. Missing,
 malformed, unknown, expired or revoked credentials return `401` with a Bearer
 challenge. Members lacking the required role receive `403`. Removing/demoting the
 final owner returns `409`.
+
+## Task 004: extract and review decisions
+
+Extraction is explicit, deterministic and offline. The `decision-marker-v1` rule
+selects complete chunks beginning with `Decision:`, `We decided`, `We prioritised`
+or `We prioritized` (case-insensitive), with nonblank following content. An optional
+Markdown heading prefix is ignored for matching only. Quotes, Unicode and line endings
+remain unchanged. Ordinary prose and headings without content produce no proposal.
+Source instructions are data and never trigger actions.
+
+With the owner token and workspace from the earlier example, upload the synthetic
+decision fixture and extract its proposals:
+
+```sh
+DECISION_RECEIPT=$(curl --fail --silent --show-error \
+  "http://localhost:8000/api/v1/workspaces/$WORKSPACE_ID/sources" \
+  -H "Authorization: Bearer $PMKW_API_TOKEN" \
+  -F 'title=First observability release (synthetic)' \
+  -F 'file=@apps/api/tests/fixtures/observability-decision.txt')
+DECISION_SOURCE_ID=$(printf '%s' "$DECISION_RECEIPT" | jq -er .source_document_id)
+DECISION_VERSION_ID=$(printf '%s' "$DECISION_RECEIPT" | jq -er .document_version_id)
+
+PROPOSAL_RECEIPT=$(curl --fail --silent --show-error -X POST \
+  "http://localhost:8000/api/v1/workspaces/$WORKSPACE_ID/sources/$DECISION_SOURCE_ID/versions/$DECISION_VERSION_ID/proposals" \
+  -H "Authorization: Bearer $PMKW_API_TOKEN")
+PROPOSAL_ID=$(printf '%s' "$PROPOSAL_RECEIPT" | jq -er '.proposals[0].id')
+
+# Inspect the exact quotation and its source/version/chunk citation before reviewing.
+curl --fail --silent --show-error \
+  "http://localhost:8000/api/v1/workspaces/$WORKSPACE_ID/proposals/$PROPOSAL_ID" \
+  -H "Authorization: Bearer $PMKW_API_TOKEN" | jq
+
+# An explicit owner action publishes this quotation; use action=reject to reject it.
+curl --fail --silent --show-error \
+  "http://localhost:8000/api/v1/workspaces/$WORKSPACE_ID/proposals/$PROPOSAL_ID/review" \
+  -H "Authorization: Bearer $PMKW_API_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"action":"approve","comment":"Reviewed against the synthetic source."}' | jq
+
+curl --fail --silent --show-error \
+  "http://localhost:8000/api/v1/workspaces/$WORKSPACE_ID/decisions" \
+  -H "Authorization: Bearer $PMKW_API_TOKEN" | jq
+```
+
+Proposals include `kind=decision`, `extraction_method=deterministic_source_quotation`,
+`extractor_version`, original proposer/time, `status`, `statement`, an `evidence` object
+using the existing Evidence fields, nullable `review`, and nullable `decision_id`.
+Review includes its UUID, `reviewer_id`, `action`, optional `comment` and `created_at`.
+Decisions include a stable UUID, `workspace_id`, `proposal_id`, `statement`, `evidence`,
+`approved_by`, `approved_at` and `source_is_latest`. Approval records review judgment;
+it establishes neither source truth nor a new interpretation.
+
+Proposal and decision lists order by creation time then UUID and accept `limit`
+(default 50, range 1–100) and `offset` (default 0, nonnegative). Proposal `status`
+accepts `pending` (default), `approved`, `rejected` or `all`. Extraction results follow
+chunk order. No matching marker returns `proposals=[]` and `created_count=0`.
+Repeating extraction on the same current version preserves IDs, original proposer
+and terminal statuses. Owners may explicitly review proposals they generated.
+
+Review accepts only `action` and optional `comment`; a supplied non-null comment is
+trimmed, must be nonblank/NUL-free, and may contain at most 1,000 characters.
+Reviewer identity and timestamps come from the server. Approval and publication
+commit atomically. Repeating the same action returns the original review without
+changing its comment or actor; an opposite action returns `409`.
+
+A newer source version makes extraction from the old version and approval of its
+pending proposals return `409`. Rejection remains possible. Prior approvals and their
+citations remain readable with `source_is_latest=false`; same-action review retries
+still succeed. No automatic withdrawal or supersession occurs. Source/decision text,
+proposals and review history have no edit/delete endpoints. Search and ask continue
+to quote original sources independently of proposal approval.
+
+This is conservative marker detection, not general decision extraction: it misses
+implicit wording and can nominate negated, hypothetical or malicious statements.
+It quotes whole existing chunks (up to 1,000 characters), so a long decision may be
+split and only its opening chunk selected. Owners must inspect evidence before
+approval. Separate chunks, sources and source versions are not semantically deduplicated.
+Generation is synchronous and returns all matches within the existing 1 MiB upload
+limit; production-scale batching and rate limits remain deferred.
+
+See [Task 004 verification and limitations](docs/TASK_004.md).
 
 ## Task 002: enable local semantic and hybrid retrieval
 
