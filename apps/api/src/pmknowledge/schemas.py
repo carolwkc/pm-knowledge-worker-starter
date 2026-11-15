@@ -12,6 +12,7 @@ QueryText = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=1000, pattern=r"^[^\x00]+$"),
 ]
+RetrievalMode = Literal["keyword", "semantic", "hybrid"]
 
 
 class WorkspaceCreate(BaseModel):
@@ -59,6 +60,7 @@ class SearchRead(BaseModel):
 class AskRequest(BaseModel):
     question: QueryText
     limit: Annotated[int, Field(ge=1, le=20)] = 5
+    mode: RetrievalMode = "keyword"
 
 
 class Citation(Evidence):

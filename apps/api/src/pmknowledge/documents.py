@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from pmknowledge.chunking import chunk_text
+from pmknowledge.embeddings import Embedder, index_version
 from pmknowledge.models import DocumentVersion, SourceChunk, SourceDocument, Workspace
 from pmknowledge.schemas import IngestRead
 
@@ -26,6 +27,7 @@ def ingest(
     source_id: UUID | None = None,
     title: str | None = None,
     external_uri: str | None = None,
+    embedder: Embedder | None = None,
 ) -> IngestRead:
     require_workspace(session, workspace_id)
     source = None
@@ -91,6 +93,8 @@ def ingest(
             ]
         )
         session.flush()
+    if embedder is not None:
+        index_version(session, version.id, embedder)
     chunk_count = (
         session.scalar(
             select(func.count())

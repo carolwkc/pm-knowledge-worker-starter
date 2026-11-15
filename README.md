@@ -1,8 +1,9 @@
 # PM Knowledge Worker
 
 An evidence-first product knowledge API for product managers, designers, and tech leads.
-Task 001 provides Markdown/text ingestion, immutable provenance, workspace-scoped
-keyword search, and deterministic quoted answers. All supplied content is synthetic.
+Tasks 001–002 provide Markdown/text ingestion, immutable provenance, workspace-scoped
+keyword/semantic/hybrid search, and deterministic quoted answers. All supplied content
+is synthetic. Local CPU embeddings are opt-in; keyword mode remains the default.
 
 ## Run locally
 
@@ -95,8 +96,8 @@ spend too long correlating logs during incidents.` It does not infer a new concl
 | `POST /api/v1/workspaces` | JSON `{"name":"..."}` | `201 {id, name, created_at}`; unauthenticated development operation |
 | `POST /api/v1/workspaces/{workspace_id}/sources` | Multipart `file`, `title`, optional `external_uri` | `201` ingestion receipt |
 | `POST /api/v1/workspaces/{workspace_id}/sources/{source_id}/versions` | Multipart `file` | `201` new version or `200` existing identical version |
-| `GET /api/v1/workspaces/{workspace_id}/search` | Query `q`, optional `limit` (default 5, range 1–20) | `200 {results:[...]}` ranked excerpts |
-| `POST /api/v1/workspaces/{workspace_id}/ask` | JSON `{question, limit?}` | `200 {answer, status, sources}`; at most three quoted citations |
+| `GET /api/v1/workspaces/{workspace_id}/search` | Query `q`, optional `limit` (default 5, range 1–20), `mode` | `200 {results:[...]}` ranked excerpts |
+| `POST /api/v1/workspaces/{workspace_id}/ask` | JSON `{question, limit?, mode?}` | `200 {answer, status, sources}`; at most three quoted citations |
 
 Ingestion receipts contain `workspace_id`, `source_document_id`, `document_version_id`,
 `version_number`, `sha256`, `chunk_count`, and `duplicate`. Names/titles have a 200-character
@@ -110,7 +111,7 @@ Unicode character offsets, end-exclusive, into the version's unchanged `plain_te
 Markdown syntax and line endings remain intact. Citation objects contain the same
 evidence fields except `score`, plus a string `citation` number matching `[1]` in `answer`.
 
-Search uses English stemming and stop words, matches any query term, and ranks only
+Keyword search uses English stemming and stop words, matches any query term, and ranks only
 the latest version of each source. Empty workspaces, stop-word-only, punctuation-only,
 and unmatched retrieval return no results. `grounded` means matching text was quoted;
 it does not guarantee the excerpts fully answer the question or that the source is
@@ -121,6 +122,98 @@ reuse its ID through the versions endpoint. Re-uploading any previously seen has
 returns the original version without changing which version is current. Metadata is
 set when a source is created. Missing workspaces and sources outside the requested
 workspace return `404`; malformed requests return `422`.
+
+## Task 002: enable local semantic and hybrid retrieval
+
+`mode` accepts `keyword` (default), `semantic`, or `hybrid`. Every mode filters by the
+workspace and latest source version before ranking. Semantic search uses exact cosine
+ranking with `BAAI/bge-small-en-v1.5` (384 dimensions, English, CPU). Hybrid combines
+the top 20 keyword and top 20 semantic candidates using reciprocal rank fusion
+(`sum(1 / (60 + rank))`), deduplicates chunks, and then applies `limit`.
+
+The pgvector-capable PostgreSQL 16 image uses the existing database volume. Migration
+`0002` enables the vector extension and adds a separate derived-embedding table;
+original source text, chunks and citations stay unchanged. Do not delete a volume
+to upgrade. Enabling the extension requires database-owner/superuser permission in
+this local setup. No approximate vector index is needed at this size.
+
+For Docker, run the normal setup above, then explicitly download the public model:
+
+```sh
+docker compose run --rm --no-deps -e HF_HUB_OFFLINE=0 api \
+  uv run --no-sync python -m pmknowledge.embeddings download
+```
+
+This command contacts the model registry to download about 67 MB of public weights;
+it sends no documents. Set `EMBEDDINGS_ENABLED=true` in `.env`, then recreate the API:
+
+```sh
+docker compose up -d --wait api
+```
+
+Weights are cached in the `embedding_models` volume. Normal API requests use local
+files only, and the container additionally sets `HF_HUB_OFFLINE=1`. No model is
+downloaded during API requests, ingestion, backfill or evaluation. With embeddings
+enabled, new ingests embed their chunks in the same transaction. A model failure
+rolls back the source/version/chunk writes and returns a safe `503`.
+
+Existing sources need an explicit workspace-scoped backfill (reuse `WORKSPACE_ID`
+from the curl demo):
+
+```sh
+docker compose exec api uv run --no-sync python -m pmknowledge.embeddings backfill \
+  --workspace-id "$WORKSPACE_ID"
+
+curl --fail --silent --show-error --get \
+  "http://localhost:8000/api/v1/workspaces/$WORKSPACE_ID/search" \
+  --data-urlencode 'q=How can engineers find problems sooner to shorten outages?' \
+  --data-urlencode 'mode=semantic' | jq
+
+curl --fail --silent --show-error \
+  "http://localhost:8000/api/v1/workspaces/$WORKSPACE_ID/ask" \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"troubleshooting acceleration","mode":"hybrid"}' | jq
+```
+
+Backfill only indexes the requested workspace's latest versions and skips existing
+model/chunk pairs. Repeating it is idempotent. Until backfill completes, semantic
+search covers only chunks with embeddings; hybrid can still retrieve unindexed
+chunks through its keyword component. Keyword mode works with embeddings disabled.
+Explicit semantic/hybrid requests return `503` if embeddings are disabled or the
+local model is unavailable; the API never silently switches retrieval mode.
+
+On the host, use the same commands through `uv run` without `docker compose exec api`
+or `--no-sync`. Download once with `uv run python -m pmknowledge.embeddings download`,
+then enable embeddings when starting Uvicorn. The host cache defaults to
+`.cache/embeddings`; override it with `EMBEDDING_CACHE_DIR`. Host and Docker caches
+are separate. Neither cache belongs in Git.
+
+`SEMANTIC_MIN_SCORE` defaults to `0.6` and only gates cosine similarity candidates.
+Scores are mode-specific ranking values: keyword rank, cosine similarity, or RRF
+score. They are not comparable across modes and are not confidence estimates.
+Broad lexical matches may still enter hybrid answers even if semantically irrelevant.
+
+## Retrieval evaluation
+
+Eight synthetic documents have eight labelled positive questions and two unrelated
+questions in `apps/api/evaluation/cases.json`. Run from the repository root after
+migration and the explicit model download:
+
+```sh
+uv run python -m pmknowledge.evaluation --k 3
+# Or use the cached model inside Docker:
+docker compose exec api uv run --no-sync python -m pmknowledge.evaluation --k 3
+```
+
+The command reports document recall@k, mean reciprocal rank@k for positive cases,
+and no-evidence accuracy separately for the unrelated cases. It exercises the real
+local model and SQL retrievers in an isolated temporary workspace, then rolls back
+all fixture data. It does not publish sources or modify existing workspaces.
+
+Recorded results and limitations are in [Task 002 verification](docs/TASK_002.md).
+These tiny synthetic measurements are not evidence that later pilot quality targets
+have been achieved. Ties use source UUIDs, so MRR can vary across fresh evaluation
+workspaces when hybrid candidates have equal scores.
 
 ## Tests and checks
 
@@ -176,6 +269,10 @@ contents, metadata, and queries. Uvicorn access logging is disabled in documente
 commands because URL query strings can contain question text. Treat source excerpts
 and Markdown as untrusted text if a UI is added; no source instruction is executed.
 
-No external model, connector, frontend, agent orchestration, or external write action
-is implemented. Keyword retrieval does not detect contradictions or evaluate whether
-an excerpt supports an interpretation. Task 002 has not started.
+No external model API, connector, frontend, agent orchestration, or external write
+action is implemented. Retrieval does not detect contradictions or evaluate whether
+an excerpt supports an interpretation. The local embedding model is English-only
+and truncates model inputs at 512 tokens; character-based chunks are not token-aware.
+The model name and Python dependencies are fixed for this slice; stronger weight
+revision pinning and representative threshold calibration remain future work.
+Task 003 has not started.

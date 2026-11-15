@@ -15,8 +15,11 @@ COPY pyproject.toml uv.lock .python-version ./
 COPY alembic.ini ./
 COPY apps/api/start-api.sh ./start-api.sh
 COPY apps/api/migrations apps/api/migrations
+COPY apps/api/evaluation apps/api/evaluation
 ENV PATH="/app/.venv/bin:$PATH" UV_PYTHON_DOWNLOADS=never
-RUN useradd --create-home --uid 10001 api
+RUN useradd --create-home --uid 10001 api \
+    && mkdir -p /home/api/.cache/embeddings \
+    && chown api:api /home/api/.cache /home/api/.cache/embeddings
 USER api
 EXPOSE 8000
 CMD ["uvicorn", "pmknowledge.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

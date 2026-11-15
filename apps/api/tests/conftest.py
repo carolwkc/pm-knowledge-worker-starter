@@ -38,7 +38,12 @@ def client(database: Engine) -> Iterator[TestClient]:
     from pmknowledge.config import Settings
     from pmknowledge.main import create_app
 
-    app = create_app(Settings(database_url=database.url.render_as_string(hide_password=False)))
+    app = create_app(
+        Settings(
+            database_url=database.url.render_as_string(hide_password=False),
+            embeddings_enabled=False,
+        )
+    )
     with TestClient(app) as api:
         yield api
 
