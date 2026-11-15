@@ -27,12 +27,13 @@ As a team member, I can add synthetic product documents and query them, so that 
 - Answer endpoint can return deterministic extractive evidence if no LLM is configured.
 - If LLM is configured, synthesis cites only retrieved source chunks; unsupported assertions are suppressed or flagged.
 - Empty retrieval returns an explicit insufficient-evidence response.
-- Queries are constrained to a workspace; no cross-workspace results.
+- Queries require an authenticated user with workspace membership; no cross-workspace results.
+- Workspace readers can search/ask, editors can also upload, and owners can manage memberships.
 - Tests use synthetic fixtures and cover both successful and missing-evidence flows.
 
 ## Not yet in scope
 
-Production authentication and RBAC, live document connectors, cross-tenant enterprise deployment, Slack/Jira writes, automatic knowledge promotion, complex graph UX, proactive monitoring.
+SSO and production identity lifecycle, per-document ACLs, live document connectors, cross-tenant enterprise deployment, Slack/Jira writes, automatic knowledge promotion, complex graph UX, proactive monitoring.
 
 ## Quality targets for later pilot
 

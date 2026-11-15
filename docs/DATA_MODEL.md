@@ -90,6 +90,27 @@ Inference/inserts run in batches of 64 within the caller's transaction; failures
 roll back the whole ingestion/backfill. Exact cosine search is used at this scale;
 there is no approximate index or independent vector service.
 
+## Task 003 identities and workspace permissions
+
+- `app_user`: stable UUID, display `name`, timezone-aware `created_at`. Display names
+  are not login credentials and need not be unique.
+- `api_token`: UUID, indexed user FK, unique 64-character SHA-256 `token_hash`,
+  `created_at`, mandatory `expires_at`, optional `revoked_at`. No plaintext secret is
+  stored. User deletion cascades to tokens.
+- `workspace_membership`: composite primary key `(workspace_id, user_id)`, indexed
+  user FK, and a check-constrained `reader|editor|owner` role. Parent deletion cascades
+  memberships. The API prevents removing/demoting the last owner under a workspace
+  row lock; this is an application invariant, not a database aggregate constraint.
+
+Migration `0003` adds these tables only. No source evidence or embeddings are rewritten,
+and legacy workspaces receive no implicit owner. The trusted operator CLI assigns
+owners explicitly. New API-created workspaces commit their first owner atomically.
+
+Both retrieval queries require membership via SQL `EXISTS` before ranking and limits,
+as well as the existing workspace/latest-version predicates. HTTP service entrypoints
+also check the required role before document processing or inference. Memberships
+and tokens are checked afresh each request; there are no permission/answer caches.
+
 ## Later knowledge entities
 
 strategy, customer, insight, opportunity, initiative, decision, evidence, competitor, entity_relation, review_event.

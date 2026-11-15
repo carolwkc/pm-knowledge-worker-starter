@@ -7,6 +7,7 @@ from typing import Annotated, Any, cast
 from uuid import UUID
 
 from fastapi import (
+    APIRouter,
     Depends,
     FastAPI,
     File,
@@ -19,23 +20,32 @@ from fastapi import (
 )
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from sqlalchemy import create_engine, text
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from pmknowledge.access import change_membership, require_workspace_access
+from pmknowledge.auth import Principal, authenticate, invalid_credentials
 from pmknowledge.config import Settings
 from pmknowledge.documents import ingest
 from pmknowledge.embeddings import Embedder, EmbeddingUnavailable, LocalEmbedder
-from pmknowledge.models import Workspace
+from pmknowledge.models import User, Workspace, WorkspaceMembership
 from pmknowledge.retrieval import ask, search
 from pmknowledge.schemas import (
     AnswerRead,
     AskRequest,
     IngestRead,
+    JoinedWorkspace,
+    MembershipList,
+    MembershipRead,
+    MembershipWrite,
     QueryText,
     RetrievalMode,
     SearchRead,
+    UserRead,
     WorkspaceCreate,
+    WorkspaceList,
     WorkspaceRead,
 )
 
@@ -51,6 +61,20 @@ def get_session(request: Request) -> Iterator[Session]:
 
 
 Database = Annotated[Session, Depends(get_session, scope="function")]
+
+
+def get_principal(
+    session: Database,
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Depends(HTTPBearer(auto_error=False))
+    ],
+) -> Principal:
+    if credentials is None:
+        raise invalid_credentials()
+    return authenticate(session, credentials.credentials)
+
+
+Identity = Annotated[Principal, Depends(get_principal, scope="function")]
 
 
 def get_embedder(request: Request) -> Embedder | None:
@@ -82,6 +106,7 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             engine.dispose()
 
     api = FastAPI(title="PM Knowledge Worker", version="0.1.0", lifespan=lifespan)
+    routes = APIRouter(dependencies=[Depends(get_principal, scope="function")])
     api.state.engine = engine
     api.state.settings = settings
     api.state.embedder = (
@@ -153,24 +178,79 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             raise HTTPException(503, "Database unavailable") from exc
         return {"status": "ok"}
 
-    @api.post(
+    @routes.get("/api/v1/me", response_model=UserRead)
+    def me(session: Database, principal: Identity) -> UserRead:
+        user = session.get(User, principal.user_id)
+        if user is None:
+            raise invalid_credentials()
+        return UserRead.model_validate(user)
+
+    @routes.get("/api/v1/workspaces", response_model=WorkspaceList)
+    def list_workspaces(session: Database, principal: Identity) -> WorkspaceList:
+        rows = session.execute(
+            select(Workspace.id, Workspace.name, Workspace.created_at, WorkspaceMembership.role)
+            .join(WorkspaceMembership, WorkspaceMembership.workspace_id == Workspace.id)
+            .where(WorkspaceMembership.user_id == principal.user_id)
+            .order_by(Workspace.created_at, Workspace.id)
+        ).mappings()
+        return WorkspaceList(workspaces=[JoinedWorkspace.model_validate(row) for row in rows])
+
+    @routes.post(
         "/api/v1/workspaces",
         response_model=WorkspaceRead,
         status_code=201,
-        summary="Create a development workspace (unauthenticated)",
+        summary="Create a workspace owned by the authenticated user",
     )
-    def create_workspace(body: WorkspaceCreate, session: Database) -> WorkspaceRead:
+    def create_workspace(
+        body: WorkspaceCreate, session: Database, principal: Identity
+    ) -> WorkspaceRead:
         workspace = Workspace(name=body.name)
         session.add(workspace)
         session.flush()
+        session.add(
+            WorkspaceMembership(workspace_id=workspace.id, user_id=principal.user_id, role="owner")
+        )
+        session.flush()
         return WorkspaceRead.model_validate(workspace)
 
-    @api.post(
+    @routes.get("/api/v1/workspaces/{workspace_id}/members", response_model=MembershipList)
+    def list_members(workspace_id: UUID, session: Database, principal: Identity) -> MembershipList:
+        require_workspace_access(session, workspace_id, principal, "owner")
+        members = session.scalars(
+            select(WorkspaceMembership)
+            .where(WorkspaceMembership.workspace_id == workspace_id)
+            .order_by(WorkspaceMembership.user_id)
+        )
+        return MembershipList(members=[MembershipRead.model_validate(member) for member in members])
+
+    @routes.put(
+        "/api/v1/workspaces/{workspace_id}/members/{user_id}", response_model=MembershipRead
+    )
+    def put_member(
+        workspace_id: UUID,
+        user_id: UUID,
+        body: MembershipWrite,
+        session: Database,
+        principal: Identity,
+    ) -> MembershipRead:
+        member = change_membership(session, workspace_id, principal, user_id, body.role)
+        assert member is not None
+        return member
+
+    @routes.delete("/api/v1/workspaces/{workspace_id}/members/{user_id}", status_code=204)
+    def delete_member(
+        workspace_id: UUID, user_id: UUID, session: Database, principal: Identity
+    ) -> Response:
+        change_membership(session, workspace_id, principal, user_id, None)
+        return Response(status_code=204)
+
+    @routes.post(
         "/api/v1/workspaces/{workspace_id}/sources", response_model=IngestRead, status_code=201
     )
     def create_source(
         workspace_id: UUID,
         session: Database,
+        principal: Identity,
         embedder: Embedding,
         file: Annotated[UploadFile, File()],
         title: Annotated[str, Form(min_length=1, max_length=200)],
@@ -182,12 +262,13 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             session,
             workspace_id,
             file,
+            principal=principal,
             title=title.strip(),
             external_uri=external_uri,
             embedder=embedder,
         )
 
-    @api.post(
+    @routes.post(
         "/api/v1/workspaces/{workspace_id}/sources/{source_id}/versions",
         response_model=IngestRead,
         status_code=201,
@@ -198,18 +279,22 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         source_id: UUID,
         response: Response,
         session: Database,
+        principal: Identity,
         embedder: Embedding,
         file: Annotated[UploadFile, File()],
     ) -> IngestRead:
-        result = ingest(session, workspace_id, file, source_id=source_id, embedder=embedder)
+        result = ingest(
+            session, workspace_id, file, principal=principal, source_id=source_id, embedder=embedder
+        )
         if result.duplicate:
             response.status_code = 200
         return result
 
-    @api.get("/api/v1/workspaces/{workspace_id}/search", response_model=SearchRead)
+    @routes.get("/api/v1/workspaces/{workspace_id}/search", response_model=SearchRead)
     def search_sources(
         workspace_id: UUID,
         session: Database,
+        principal: Identity,
         settings: Configuration,
         embedder: Embedding,
         q: Annotated[QueryText, Query()],
@@ -222,17 +307,19 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
                 workspace_id,
                 q,
                 limit,
+                principal=principal,
                 mode=mode,
                 embedder=embedder,
                 min_score=settings.semantic_min_score,
             )
         )
 
-    @api.post("/api/v1/workspaces/{workspace_id}/ask", response_model=AnswerRead)
+    @routes.post("/api/v1/workspaces/{workspace_id}/ask", response_model=AnswerRead)
     def ask_question(
         workspace_id: UUID,
         body: AskRequest,
         session: Database,
+        principal: Identity,
         settings: Configuration,
         embedder: Embedding,
     ) -> AnswerRead:
@@ -241,11 +328,13 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             workspace_id,
             body.question,
             body.limit,
+            principal=principal,
             mode=body.mode,
             embedder=embedder,
             min_score=settings.semantic_min_score,
         )
 
+    api.include_router(routes)
     return api
 
 

@@ -1,9 +1,10 @@
 # PM Knowledge Worker
 
 An evidence-first product knowledge API for product managers, designers, and tech leads.
-Tasks 001–002 provide Markdown/text ingestion, immutable provenance, workspace-scoped
-keyword/semantic/hybrid search, and deterministic quoted answers. All supplied content
-is synthetic. Local CPU embeddings are opt-in; keyword mode remains the default.
+Tasks 001–003 provide Markdown/text ingestion, immutable provenance, authenticated
+workspace access, keyword/semantic/hybrid search, and deterministic quoted answers.
+All supplied content is synthetic. Local CPU embeddings are opt-in; keyword mode
+remains the default.
 
 ## Run locally
 
@@ -45,42 +46,107 @@ Stop the container API first (`docker compose stop api`) if using the same port.
 No schema is created implicitly by application startup. Outside Compose, migrations
 are an explicit step. `docker compose down` stops services and preserves the data volume.
 
+## Task 003: provision an identity and workspace access
+
+Every `/api/v1` endpoint requires an issued bearer token. Health, OpenAPI and the
+interactive documentation remain public; use **Authorize** in `/docs` to enter a
+token. There is no default credential, signup endpoint or authentication bypass.
+
+After starting the API, provision a synthetic user and capture one token receipt
+(these examples also require `jq`):
+
+```sh
+PMKW_USER_ID=$(docker compose exec -T api uv run --no-sync python -m pmknowledge.auth \
+  create-user --name 'Synthetic Aurora member' | jq -er .id)
+PMKW_TOKEN_RECEIPT=$(docker compose exec -T api uv run --no-sync python -m pmknowledge.auth \
+  issue-token --user-id "$PMKW_USER_ID")
+PMKW_API_TOKEN=$(printf '%s' "$PMKW_TOKEN_RECEIPT" | jq -er .token)
+PMKW_TOKEN_ID=$(printf '%s' "$PMKW_TOKEN_RECEIPT" | jq -er .id)
+
+curl --fail --silent --show-error http://localhost:8000/api/v1/me \
+  -H "Authorization: Bearer $PMKW_API_TOKEN" | jq
+```
+
+Only token issuance returns plaintext; keep the receipt private and retain its token
+ID for revocation. The database stores a SHA-256 digest of a secret generated from
+32 random bytes. Tokens expire after 30 days by default; `issue-token` accepts a
+positive `--expires-in-days`. Create a fresh token to rotate, then use the operator
+command `revoke-token --token-id TOKEN_UUID` with the retired token's recorded ID.
+
+On the host, use the same commands with `uv run python -m pmknowledge.auth`, omitting
+the Docker prefix and `--no-sync`. Provisioning commands are trusted operator tools
+using database credentials; they are not available through HTTP. They print JSON
+only after committing, and failures return a nonzero exit status.
+
+An authenticated user can create a workspace and becomes its first owner atomically.
+`GET /api/v1/workspaces` lists only workspaces the caller has joined, including their
+role. All documents in a workspace inherit that workspace's access:
+
+| Role | Access |
+| --- | --- |
+| `reader` | Search and ask |
+| `editor` | Reader access plus uploads and source versions |
+| `owner` | Editor access plus listing, granting, changing and removing memberships |
+
+Owners manage already provisioned users through `/members/{user_id}` (see the API
+table below). They can promote another owner before removing/demoting themselves.
+The last owner cannot be removed or demoted, including during concurrent requests.
+
+Migration `0003` preserves all existing evidence and embeddings. Existing workspaces
+start without memberships and remain inaccessible until an operator assigns an owner:
+
+```sh
+docker compose exec -T api uv run --no-sync python -m pmknowledge.auth \
+  grant-owner --workspace-id "$WORKSPACE_ID" --user-id "$PMKW_USER_ID"
+```
+
+The command is idempotent. Do not delete existing database volumes to upgrade.
+Revocations and membership changes apply to the next request; requests already
+underway may finish. API tokens confer no workspace access without membership.
+
 ## Try the synthetic source-to-answer flow
 
 These examples additionally use `curl` and `jq`. The URI is inert metadata and is never fetched.
 
 ```sh
 WORKSPACE_ID=$(curl --fail --silent --show-error http://localhost:8000/api/v1/workspaces \
+  -H "Authorization: Bearer $PMKW_API_TOKEN" \
   -H 'Content-Type: application/json' -d '{"name":"Synthetic Aurora team"}' | jq -er .id)
 
 SOURCE_ID=$(curl --fail --silent --show-error \
   "http://localhost:8000/api/v1/workspaces/$WORKSPACE_ID/sources" \
+  -H "Authorization: Bearer $PMKW_API_TOKEN" \
   -F 'title=Observability strategy (synthetic)' \
   -F 'external_uri=https://example.invalid/observability-strategy' \
   -F 'file=@apps/api/tests/fixtures/observability-strategy.md' | jq -er .source_document_id)
 
 curl --fail --silent --show-error \
   "http://localhost:8000/api/v1/workspaces/$WORKSPACE_ID/sources" \
+  -H "Authorization: Bearer $PMKW_API_TOKEN" \
   -F 'title=First release decision (synthetic)' \
   -F 'file=@apps/api/tests/fixtures/observability-decision.txt' | jq
 
 curl --fail --silent --show-error --get \
   "http://localhost:8000/api/v1/workspaces/$WORKSPACE_ID/search" \
+  -H "Authorization: Bearer $PMKW_API_TOKEN" \
   --data-urlencode 'q=troubleshooting acceleration' --data-urlencode 'limit=5' | jq
 
 curl --fail --silent --show-error \
   "http://localhost:8000/api/v1/workspaces/$WORKSPACE_ID/ask" \
+  -H "Authorization: Bearer $PMKW_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"question":"Why was troubleshooting acceleration prioritised in the first observability release?"}' | jq
 
 # Identical content for the same source: HTTP 200, duplicate=true, unchanged version/chunk IDs.
 curl --fail --silent --show-error \
   "http://localhost:8000/api/v1/workspaces/$WORKSPACE_ID/sources/$SOURCE_ID/versions" \
+  -H "Authorization: Bearer $PMKW_API_TOKEN" \
   -F 'file=@apps/api/tests/fixtures/observability-strategy.md' | jq
 
 # No matching terms: status=insufficient_evidence and sources=[].
 curl --fail --silent --show-error \
   "http://localhost:8000/api/v1/workspaces/$WORKSPACE_ID/ask" \
+  -H "Authorization: Bearer $PMKW_API_TOKEN" \
   -H 'Content-Type: application/json' -d '{"question":"nonexistentplatypus"}' | jq
 ```
 
@@ -93,7 +159,12 @@ spend too long correlating logs during incidents.` It does not infer a new concl
 | Method / path | Input | Result |
 | --- | --- | --- |
 | `GET /health` | None | `200 {"status":"ok"}` when the database is reachable; `503` otherwise |
-| `POST /api/v1/workspaces` | JSON `{"name":"..."}` | `201 {id, name, created_at}`; unauthenticated development operation |
+| `GET /api/v1/me` | Bearer token | `200 {id, name, created_at}` for the current user |
+| `GET /api/v1/workspaces` | Bearer token | `200 {workspaces:[{id, name, created_at, role}]}` for joined workspaces only |
+| `POST /api/v1/workspaces` | JSON `{"name":"..."}` | `201 {id, name, created_at}`; caller becomes owner |
+| `GET /api/v1/workspaces/{workspace_id}/members` | Owner token | `200 {members:[{user_id, role}]}` |
+| `PUT /api/v1/workspaces/{workspace_id}/members/{user_id}` | Owner token, JSON `{"role":"reader"}` (or `editor`, `owner`) | `200 {user_id, role}`; creates or updates membership |
+| `DELETE /api/v1/workspaces/{workspace_id}/members/{user_id}` | Owner token | `204`; unknown target/membership `404`; final-owner removal `409` |
 | `POST /api/v1/workspaces/{workspace_id}/sources` | Multipart `file`, `title`, optional `external_uri` | `201` ingestion receipt |
 | `POST /api/v1/workspaces/{workspace_id}/sources/{source_id}/versions` | Multipart `file` | `201` new version or `200` existing identical version |
 | `GET /api/v1/workspaces/{workspace_id}/search` | Query `q`, optional `limit` (default 5, range 1–20), `mode` | `200 {results:[...]}` ranked excerpts |
@@ -120,8 +191,11 @@ factually correct. No matches return `insufficient_evidence` and no citations.
 Source IDs define upload identity; duplicate titles are allowed. To update a source,
 reuse its ID through the versions endpoint. Re-uploading any previously seen hash
 returns the original version without changing which version is current. Metadata is
-set when a source is created. Missing workspaces and sources outside the requested
-workspace return `404`; malformed requests return `422`.
+set when a source is created. Missing/inaccessible workspaces and sources outside
+the requested workspace return `404`; malformed requests return `422`. Missing,
+malformed, unknown, expired or revoked credentials return `401` with a Bearer
+challenge. Members lacking the required role receive `403`. Removing/demoting the
+final owner returns `409`.
 
 ## Task 002: enable local semantic and hybrid retrieval
 
@@ -167,11 +241,13 @@ docker compose exec api uv run --no-sync python -m pmknowledge.embeddings backfi
 curl --fail --silent --show-error --get \
   "http://localhost:8000/api/v1/workspaces/$WORKSPACE_ID/search" \
   --data-urlencode 'q=How can engineers find problems sooner to shorten outages?' \
+  -H "Authorization: Bearer $PMKW_API_TOKEN" \
   --data-urlencode 'mode=semantic' | jq
 
 curl --fail --silent --show-error \
   "http://localhost:8000/api/v1/workspaces/$WORKSPACE_ID/ask" \
   -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $PMKW_API_TOKEN" \
   -d '{"question":"troubleshooting acceleration","mode":"hybrid"}' | jq
 ```
 
@@ -232,8 +308,9 @@ uv run alembic check
 
 `alembic check` expects the development database to be migrated first, either by Compose
 or `uv run alembic upgrade head`. Tests run Alembic against the test database automatically,
-commit real transactions (including concurrent uploads), and remove only workspaces
-they created. They never truncate the development database. If the volume predates the
+commit real transactions (including concurrent uploads/membership changes), and clean
+up only their synthetic users/workspaces and temporary migration schemas. They never
+truncate the development database. If the volume predates the
 test database initializer, create it without deleting development data:
 
 ```sh
@@ -254,12 +331,14 @@ implementation sequence, and recorded outcomes.
 
 ## Security limitations
 
-Workspace IDs are client-supplied development scaffolding, **not authentication**.
-Anyone who can reach this API can create workspaces and query or modify a known
-workspace. SQL scopes prevent accidental cross-workspace results but do not authorize
-the caller. Do not expose this service publicly or use confidential data.
+Local API tokens authenticate callers and database memberships authorize workspace
+access. User IDs, role headers and workspace UUIDs alone confer no permissions.
+Both SQL retrievers require membership before ranking. Every source and derived
+embedding in a workspace has the same confidentiality boundary; document ACLs are
+not implemented. Operators with database credentials retain unrestricted access.
 
-There is no production IAM/RBAC, rate limiting, request-stream size enforcement,
+This remains a local synthetic-data service. There is no SSO, password login,
+production identity lifecycle, TLS termination, rate limiting, request-stream size enforcement,
 retention/deletion workflow, backup policy, encryption setup, or production deployment
 configuration. The file limit is checked after multipart parsing, which can spool a
 larger incoming body to disk. Database credentials are public local defaults.
@@ -275,4 +354,4 @@ an excerpt supports an interpretation. The local embedding model is English-only
 and truncates model inputs at 512 tokens; character-based chunks are not token-aware.
 The model name and Python dependencies are fixed for this slice; stronger weight
 revision pinning and representative threshold calibration remain future work.
-Task 003 has not started.
+Task 003 implementation details and verification are in [Task 003](docs/TASK_003.md).
