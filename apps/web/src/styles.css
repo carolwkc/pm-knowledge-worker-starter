@@ -526,6 +526,20 @@ mark {
   max-width: 90ch;
   margin: 0.5rem 0 1.5rem;
 }
+.upload-panel {
+  margin: 1.5rem 0;
+}
+.upload-form,
+.upload-receipt {
+  border: 1px solid #dce3ed;
+  border-radius: 6px;
+  padding: 1.25rem;
+  margin-top: 1rem;
+  overflow-wrap: anywhere;
+}
+.upload-form input {
+  margin-bottom: 1rem;
+}
 .empty-workspace {
   padding: 4rem 0 6rem;
 }

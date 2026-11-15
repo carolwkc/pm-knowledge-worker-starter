@@ -1,11 +1,11 @@
 # PM Knowledge Worker
 
 An evidence-first product knowledge API for product managers, designers, and tech leads.
-Tasks 001–007 provide Markdown/text ingestion, immutable provenance, authenticated
+Tasks 001–008 provide Markdown/text ingestion, immutable provenance, authenticated
 workspace access, keyword/semantic/hybrid search, deterministic quoted answers,
 explicitly reviewed decision quotations, web Q&A with source navigation, and a
 source catalogue with title filtering and version history, and browser-based
-decision proposal generation, owner review and approved decision browsing.
+decision proposal generation, owner review, approved decision browsing and browser uploads.
 All supplied content is synthetic. Local CPU embeddings are opt-in; keyword mode
 remains the default.
 
@@ -177,8 +177,8 @@ history. **Disconnect** and page reload clear the session. Changing workspaces c
 the current question/evidence; revoked credentials require reconnecting. An access
 failure refreshes the available workspace list. Content already received cannot be
 retracted until a request detects a permission change or the session is cleared.
-There is no default token, signup, upload screen or membership administration UI.
-Keep using the existing operator commands and APIs for those operations.
+There is no default token, signup or membership administration UI.
+Keep using the existing operator commands and APIs for identity administration.
 
 Semantic/hybrid modes use the same opt-in local embeddings as the API. If unavailable,
 the UI reports that mode's failure and lets you select keyword; it never switches
@@ -209,7 +209,7 @@ Transient failures expose **Retry**; access failures refresh workspace discovery
 
 Freshness is a snapshot at read time. There is no polling or stable pagination
 snapshot during concurrent uploads; use Refresh to discover new documents/versions.
-Uploads and source updates remain existing API operations. No document text is
+Editors/owners can upload through Task 008; existing ingestion APIs remain available. No document text is
 included in catalogue/history responses; only exact-version reads return full text.
 See [Task 006 verification and limitations](docs/TASK_006.md).
 
@@ -253,9 +253,42 @@ Refresh discovers the recorded result on return. Tokens and review drafts remain
 only in tab memory. Source text, review comments and URI metadata remain inert.
 
 This task adds no HTTP endpoints, migrations, dependencies, model calls or external
-writes. Uploads and membership administration remain API/CLI operations. See
+writes. Task 008 adds browser uploads; membership administration remains API/CLI. See
 [Task 007 specification](tasks/007-decision-browser-review.md) and
 [verification and limitations](docs/TASK_007.md).
+
+## Task 008: upload documents and new versions
+
+In **Browse sources**, editors and owners choose **Add source**, enter a title and
+optional source URI, select one file, then choose **Upload source**. Choosing a file
+does not send it. For an existing source, choose **Upload new version**; its destination
+is fixed and metadata is preserved, including when you start from historical evidence.
+Readers have no upload controls. **Cancel** discards an unsent form.
+
+Files must be nonblank UTF-8 `.md`, `.markdown` or `.txt` (extensions are case-insensitive),
+from 1 byte through 1 MiB, without NUL characters. Titles are trimmed, nonblank and
+limited to 200 Unicode characters; optional URIs are trimmed and limited to 2,048.
+URIs are inert metadata. Original file bytes, Unicode and CRLF line endings are preserved.
+
+A successful upload shows the ingestion receipt, clears the file draft, resets the
+catalogue to its unfiltered first page, refreshes source history and opens the exact
+returned version. The destination opens even if absent from the catalogue page.
+**Existing content reused** means no new version was created. Re-uploading old content
+opens its historical version; it does not make that content current again. Proposal
+generation and owner review remain separate actions. Completed Q&A stays pinned.
+
+After a confirmed save, **Retry** repeats only failed refresh reads. Validation failures
+retain an editable form. An uncertain upload outcome never automatically resends the
+file; choose **Inspect source catalogue** before manually submitting again. Repeating
+a new-source upload can create a separate document. Content deduplication applies only
+within an existing source; there is no backend idempotency key or exactly-once guarantee.
+
+Navigation may abort the browser request while the server still saves the upload.
+Refresh the catalogue when returning. File selections, drafts and receipts stay only
+in tab memory and clear on cancellation, destination/view/workspace changes, disconnect,
+reload or detected access loss. Access changes take effect when detected by a request.
+See [Task 008 specification](tasks/008-browser-uploads.md) and
+[verification and limitations](docs/TASK_008.md).
 
 ### Web development and host serving
 
@@ -299,12 +332,12 @@ npm --prefix apps/web exec -- playwright install chromium
 For real-browser integration, use a dedicated Compose project and unused ports:
 
 ```sh
-POSTGRES_PASSWORD=localdev POSTGRES_PORT=55437 API_PORT=58007 EMBEDDINGS_ENABLED=false \
-  docker compose -p ashgabat-task007 -f compose.yaml \
+POSTGRES_PASSWORD=localdev POSTGRES_PORT=55438 API_PORT=58008 EMBEDDINGS_ENABLED=false \
+  docker compose -p minnetonka-task008 -f compose.yaml \
   -f apps/web/e2e/compose.yaml up -d --build --wait
 
-E2E_DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55437/pmknowledge_test \
-E2E_BASE_URL=http://127.0.0.1:58007 \
+E2E_DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55438/pmknowledge_test \
+E2E_BASE_URL=http://127.0.0.1:58008 \
   npm --prefix apps/web run test:e2e
 ```
 
@@ -318,11 +351,12 @@ screenshots are disabled to avoid recording credentials/source content. An optio
 `E2E_SOURCE_BROWSER_SCREENSHOT_PATH` similarly captures the synthetic source-browser
 walkthrough. `E2E_DECISION_SCREENSHOT_PATH` captures the synthetic decision evidence
 walkthrough. Save screenshots under `.context/`.
+`E2E_UPLOAD_SCREENSHOT_PATH` captures only the synthetic upload form after connecting.
 
 Run the Python checks against the same dedicated database, separately from browser tests:
 
 ```sh
-TEST_DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55437/pmknowledge_test \
+TEST_DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55438/pmknowledge_test \
   uv run pytest -q
 uv run ruff check .
 uv run ruff format --check .

@@ -3,6 +3,7 @@ import type { RetrievalMode } from './api';
 import { SourcePanel } from './SourcePanel';
 import { SourceBrowser } from './SourceBrowser';
 import { DecisionBrowser } from './DecisionBrowser';
+import { UploadForm } from './UploadForm';
 import { useKnowledge } from './useKnowledge';
 
 export default function App() {
@@ -28,7 +29,9 @@ export default function App() {
                     ? 'Generating source quotations…'
                     : desk.busy === 'review'
                       ? 'Recording your review…'
-                      : '';
+                      : desk.busy === 'upload'
+                        ? 'Saving your source and opening its evidence…'
+                        : '';
 
   return (
     <div className="app-shell">
@@ -179,6 +182,70 @@ export default function App() {
                       void desk.loadHistory(source, offset, openLatest)
                     }
                     onVersion={(ref) => void desk.openVersion(ref)}
+                    upload={
+                      <section className="upload-panel" aria-label="Source uploads">
+                        {desk.canUpload && !desk.uploadTarget && (
+                          <div className="browser-actions">
+                            <button
+                              disabled={desk.busy !== null}
+                              onClick={() => desk.openUpload(null)}
+                            >
+                              Add source
+                            </button>
+                            {desk.browser.selected && (
+                              <button
+                                className="quiet-button"
+                                disabled={desk.busy !== null}
+                                onClick={() => desk.openUpload(desk.browser.selected)}
+                              >
+                                Upload new version
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        {desk.canUpload && desk.uploadTarget && (
+                          <UploadForm
+                            destination={desk.uploadTarget.source?.title ?? null}
+                            busy={desk.busy !== null}
+                            onSubmit={(input) => void desk.submitUpload(input)}
+                            onCancel={desk.cancelUpload}
+                          />
+                        )}
+                        {desk.uploadReceipt && (
+                          <div className="upload-receipt" role="status">
+                            <p>
+                              {desk.uploadReceipt.duplicate
+                                ? 'Existing content reused'
+                                : 'Source saved'}
+                              : version {desk.uploadReceipt.version_number}.
+                            </p>
+                            <p className="small-print">
+                              Source ID: {desk.uploadReceipt.source_document_id}
+                              <br />
+                              Version ID: {desk.uploadReceipt.document_version_id}
+                              <br />
+                              SHA-256: {desk.uploadReceipt.sha256}
+                              <br />
+                              Chunks: {desk.uploadReceipt.chunk_count}
+                            </p>
+                            {desk.uploadReceipt.duplicate && (
+                              <p className="small-print">
+                                Reusing historical content does not make it the latest version.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        {desk.uploadUncertain && (
+                          <button
+                            className="quiet-button"
+                            disabled={desk.busy !== null}
+                            onClick={() => void desk.loadCatalogue('', 0)}
+                          >
+                            Inspect source catalogue
+                          </button>
+                        )}
+                      </section>
+                    }
                   />
                 ) : (
                   <section className="question-panel" aria-labelledby="question-heading">

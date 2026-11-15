@@ -1,5 +1,6 @@
-import type { SourceRef, SourceSummary } from './api';
-import type { BrowserState } from './useKnowledge';
+import type { SourceRef } from './api';
+import type { ReactNode } from 'react';
+import type { BrowserState, SourceSelection } from './useKnowledge';
 
 function Pages({
   offset,
@@ -41,14 +42,16 @@ export function SourceBrowser({
   onHistory,
   onVersion,
   onFilter,
+  upload,
 }: {
   browser: BrowserState;
   busy: boolean;
   versionId?: string;
   onCatalogue: (title: string, offset: number) => void;
-  onHistory: (source: SourceSummary, offset: number, openLatest: boolean) => void;
+  onHistory: (source: SourceSelection, offset: number, openLatest: boolean) => void;
   onVersion: (ref: SourceRef) => void;
   onFilter: (title: string) => void;
+  upload?: ReactNode;
 }) {
   const title = browser.filterDraft;
   return (
@@ -57,6 +60,7 @@ export function SourceBrowser({
       <p className="lead">
         Explore your workspace’s documents and their immutable version history.
       </p>
+      {upload}
       <section aria-label="Source catalogue">
         <form
           onSubmit={(event) => {
@@ -70,6 +74,7 @@ export function SourceBrowser({
             value={title}
             onChange={(event) => onFilter(event.target.value)}
             maxLength={200}
+            disabled={busy}
           />
           <div className="browser-actions">
             <button type="submit" disabled={busy}>
@@ -106,6 +111,7 @@ export function SourceBrowser({
                 className="citation-button"
                 aria-label={`Open ${source.title}`}
                 aria-pressed={browser.selected?.source_document_id === source.source_document_id}
+                disabled={busy}
                 onClick={() => onHistory(source, 0, true)}
               >
                 <span>
@@ -145,6 +151,7 @@ export function SourceBrowser({
                   className="citation-button"
                   aria-label={`Open version ${version.version_number}`}
                   aria-pressed={versionId === version.document_version_id}
+                  disabled={busy}
                   onClick={() => onVersion(version)}
                 >
                   <span>

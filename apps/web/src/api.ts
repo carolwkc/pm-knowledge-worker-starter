@@ -85,6 +85,18 @@ export interface SourceRef {
   source_document_id: string;
   document_version_id: string;
 }
+export interface IngestReceipt extends SourceRef {
+  workspace_id: string;
+  version_number: number;
+  sha256: string;
+  chunk_count: number;
+  duplicate: boolean;
+}
+export interface UploadSourceInput {
+  title: string;
+  external_uri?: string;
+  file: File;
+}
 export interface SourceSummary {
   workspace_id: string;
   source_document_id: string;
@@ -118,13 +130,14 @@ async function request<T>(
   body?: object,
   method: 'GET' | 'POST' = body ? 'POST' : 'GET',
 ): Promise<T> {
+  const multipart = body instanceof FormData;
   const response = await fetch(`/api/v1${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
+      ...(body && !multipart ? { 'Content-Type': 'application/json' } : {}),
     },
-    body: body ? JSON.stringify(body) : undefined,
+    body: multipart ? body : body ? JSON.stringify(body) : undefined,
     signal,
     cache: 'no-store',
     credentials: 'omit',
@@ -136,6 +149,34 @@ async function request<T>(
 
 const workspacePath = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
 export const api = {
+  uploadSource: (
+    token: string,
+    workspace: string,
+    input: UploadSourceInput,
+    signal: AbortSignal,
+  ) => {
+    const body = new FormData();
+    body.append('file', input.file);
+    body.append('title', input.title);
+    if (input.external_uri) body.append('external_uri', input.external_uri);
+    return request<IngestReceipt>(`${workspacePath(workspace)}/sources`, token, signal, body);
+  },
+  uploadVersion: (
+    token: string,
+    workspace: string,
+    sourceId: string,
+    file: File,
+    signal: AbortSignal,
+  ) => {
+    const body = new FormData();
+    body.append('file', file);
+    return request<IngestReceipt>(
+      `${workspacePath(workspace)}/sources/${encodeURIComponent(sourceId)}/versions`,
+      token,
+      signal,
+      body,
+    );
+  },
   decisions: (token: string, workspace: string, offset: number, signal: AbortSignal) =>
     request<{ decisions: Decision[] }>(
       `${workspacePath(workspace)}/decisions?limit=21&offset=${offset}`,
