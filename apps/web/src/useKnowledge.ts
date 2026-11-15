@@ -3,6 +3,8 @@ import {
   api,
   ApiError,
   type Answer,
+  type FeedbackCreate,
+  type FeedbackFilter,
   type Citation,
   type Evidence,
   type IngestReceipt,
@@ -24,6 +26,8 @@ import {
   type KnowledgeRecord,
   type WorkspaceView,
 } from './decisionState';
+import { emptyFeedback, validReceipt, type FeedbackSubmission } from './feedbackState';
+import type { FeedbackDraft } from './FeedbackForm';
 
 interface Session {
   token: string;
@@ -32,7 +36,7 @@ interface Session {
 export interface OpenSource {
   version: SourceVersion;
   citation: Evidence | null;
-  context?: 'answer' | 'proposal' | 'decision';
+  context?: 'answer' | 'proposal' | 'decision' | 'feedback';
 }
 
 export interface BrowserState {
@@ -76,6 +80,13 @@ export function useKnowledge() {
   const [question, setQuestion] = useState('');
   const [mode, setMode] = useState<RetrievalMode>('keyword');
   const [answer, setAnswer] = useState<Answer | null>(null);
+  const [answerContext, setAnswerContext] = useState<{
+    question: string;
+    mode: RetrievalMode;
+    submission_id: string;
+  } | null>(null);
+  const [feedbackSubmission, setFeedbackSubmission] = useState<FeedbackSubmission | null>(null);
+  const [feedback, setFeedback] = useState(emptyFeedback);
   const [source, setSource] = useState<OpenSource | null>(null);
   const [view, setView] = useState<WorkspaceView>('ask');
   const [decisions, setDecisions] = useState(emptyDecisions);
@@ -95,6 +106,7 @@ export function useKnowledge() {
     | 'generate'
     | 'review'
     | 'upload'
+    | 'feedback'
     | null
   >(null);
   const [error, setError] = useState('');
@@ -126,6 +138,9 @@ export function useKnowledge() {
   function clearEvidence() {
     clearUpload();
     setAnswer(null);
+    setAnswerContext(null);
+    setFeedbackSubmission(null);
+    setFeedback(emptyFeedback());
     setSource(null);
     setDecisions(emptyDecisions());
     setGenerated('');
@@ -189,15 +204,19 @@ export function useKnowledge() {
     setBrowser(emptyBrowser());
     if (view === 'browse' && id) void loadCatalogue('', 0, id);
     const next =
-      view === 'proposals' && workspaces.find((w) => w.id === id)?.role === 'reader'
-        ? 'decisions'
-        : view;
+      view === 'feedback' && workspaces.find((w) => w.id === id)?.role !== 'owner'
+        ? 'ask'
+        : view === 'proposals' && workspaces.find((w) => w.id === id)?.role === 'reader'
+          ? 'decisions'
+          : view;
     setView(next);
     if ((next === 'decisions' || next === 'proposals') && id)
       void loadRecords('pending', 0, false, next, id);
+    if (next === 'feedback' && id) void loadFeedback('all', 0, id);
   }
 
   function selectView(next: WorkspaceView) {
+    if (next === 'feedback' && role !== 'owner') return;
     if (next === 'proposals' && role !== 'editor' && role !== 'owner') return;
     if (next === view) return;
     begin();
@@ -206,11 +225,15 @@ export function useKnowledge() {
     setSource(null);
     setBrowser(emptyBrowser());
     setDecisions(emptyDecisions());
+    setFeedback(emptyFeedback());
+    // A request can commit after navigation. Its frozen submission remains retryable.
+    setFeedbackSubmission((s) => (s?.status === 'pending' ? { ...s, status: 'uncertain' } : s));
     setGenerated('');
     setBusy(null);
     setError('');
     setRetry(null);
     if (next === 'browse') void loadCatalogue('', 0);
+    if (next === 'feedback') void loadFeedback('all', 0);
     if (next === 'decisions' || next === 'proposals') void loadRecords('pending', 0, false, next);
   }
 
@@ -262,8 +285,18 @@ export function useKnowledge() {
             list.workspaces.some((w) => w.id === scope) ? scope : (list.workspaces[0]?.id ?? ''),
           );
           const selected = list.workspaces.find((w) => w.id === scope) ?? list.workspaces[0];
-          if (view === 'proposals' && selected?.role !== 'editor' && selected?.role !== 'owner')
-            setView('decisions');
+          // Initial navigation starts its read from the previous render's view.
+          // Route the active view, rather than that stale closure, after access refresh.
+          setView((current) => {
+            if (current === 'feedback' && selected?.role !== 'owner') return 'ask';
+            if (
+              current === 'proposals' &&
+              selected?.role !== 'editor' &&
+              selected?.role !== 'owner'
+            )
+              return 'decisions';
+            return current;
+          });
           setError(
             'Workspace or source is no longer accessible. Workspace access has been refreshed.',
           );
@@ -327,7 +360,10 @@ export function useKnowledge() {
         mode,
         operation.signal,
       );
-      if (operation.current()) setAnswer(result);
+      if (operation.current()) {
+        setAnswer(result);
+        setAnswerContext({ question: question.trim(), mode, submission_id: crypto.randomUUID() });
+      }
     } catch (failure) {
       if (await handleFailure(failure, operation)) setRetry(() => () => void ask());
     } finally {
@@ -335,8 +371,9 @@ export function useKnowledge() {
     }
   }
 
-  async function openSource(citation: Citation) {
+  async function openSource(citation: Citation, context: 'answer' | 'feedback' = 'answer') {
     if (!session || !workspaceId) return;
+    if (writing.current) return;
     const operation = begin();
     setSource(null);
     setError('');
@@ -353,10 +390,10 @@ export function useKnowledge() {
         setError('The source response did not match this citation. Try again.');
         return;
       }
-      setSource({ version, citation, context: 'answer' });
+      setSource({ version, citation, context });
     } catch (failure) {
       if (await handleFailure(failure, operation, 'source'))
-        setRetry(() => () => void openSource(citation));
+        setRetry(() => () => void openSource(citation, context));
     } finally {
       if (operation.current()) setBusy(null);
     }
@@ -910,7 +947,125 @@ export function useKnowledge() {
     }
   }
 
+  async function submitFeedback(draft?: FeedbackDraft) {
+    if (!session || !workspaceId || !answer || !answerContext || writing.current || busy) return;
+    const body: FeedbackCreate | undefined = draft
+      ? { ...answerContext, answer, ...draft }
+      : feedbackSubmission?.status === 'uncertain'
+        ? feedbackSubmission.body
+        : undefined;
+    if (
+      !body ||
+      feedbackSubmission?.status === 'saved' ||
+      feedbackSubmission?.status === 'conflict'
+    )
+      return;
+    const operation = begin();
+    writing.current = true;
+    setBusy('feedback');
+    setError('');
+    setRetry(null);
+    setFeedbackSubmission({ body, status: 'pending' });
+    try {
+      const receipt = await api.submitFeedback(session.token, workspaceId, body, operation.signal);
+      if (!operation.current()) return;
+      if (!validReceipt(receipt, workspaceId, body.submission_id)) throw new SourceMismatch();
+      setFeedbackSubmission({ body, status: 'saved', receipt });
+    } catch (failure) {
+      if (!operation.current()) return;
+      if (failure instanceof ApiError && [401, 403, 404].includes(failure.status)) {
+        await handleFailure(failure, operation);
+      } else if (failure instanceof ApiError && failure.status === 422) {
+        setFeedbackSubmission(null);
+        setError('Feedback was not saved. Check the comment and reported answer context.');
+      } else {
+        const conflict = failure instanceof ApiError && failure.status === 409;
+        setFeedbackSubmission({ body, status: conflict ? 'conflict' : 'uncertain' });
+        setError(
+          conflict
+            ? 'Feedback submission conflicts with an existing record.'
+            : 'Feedback outcome uncertain. Retry only the preserved submission.',
+        );
+      }
+    } finally {
+      writing.current = false;
+      if (operation.current()) setBusy(null);
+    }
+  }
+
+  async function loadFeedback(
+    rating: FeedbackFilter = feedback.rating,
+    offset = 0,
+    scope = workspaceId,
+  ) {
+    if (!session || !scope || workspaces.find((w) => w.id === scope)?.role !== 'owner') return;
+    const operation = begin();
+    setBusy('records');
+    setError('');
+    setRetry(null);
+    setSource(null);
+    setFeedback({ ...emptyFeedback(), rating, offset });
+    try {
+      const result = await api.feedback(session.token, scope, rating, offset, operation.signal);
+      if (!operation.current()) return;
+      if (
+        !Array.isArray(result.feedback) ||
+        result.feedback.length > 20 ||
+        typeof result.has_more !== 'boolean' ||
+        result.feedback.some((r) => r.workspace_id !== scope)
+      )
+        throw new SourceMismatch();
+      setFeedback({
+        records: result.feedback,
+        selected: null,
+        rating,
+        offset,
+        hasMore: result.has_more,
+        loaded: true,
+      });
+    } catch (failure) {
+      if (await handleFailure(failure, operation, 'records', scope))
+        setRetry(() => () => void loadFeedback(rating, offset, scope));
+    } finally {
+      if (operation.current()) setBusy(null);
+    }
+  }
+
+  async function openFeedback(id: string) {
+    if (!session || !workspaceId || role !== 'owner') return;
+    const operation = begin();
+    setBusy('detail');
+    setError('');
+    setRetry(null);
+    setSource(null);
+    setFeedback((f) => ({ ...f, selected: null }));
+    try {
+      const record = await api.feedbackDetail(session.token, workspaceId, id, operation.signal);
+      if (!operation.current()) return;
+      if (
+        record.workspace_id !== workspaceId ||
+        record.id !== id ||
+        !record.answer ||
+        !Array.isArray(record.answer.sources)
+      )
+        throw new SourceMismatch();
+      setFeedback((f) => ({ ...f, selected: record }));
+    } catch (failure) {
+      if (await handleFailure(failure, operation, 'detail'))
+        setRetry(() => () => void openFeedback(id));
+    } finally {
+      if (operation.current()) setBusy(null);
+    }
+  }
+
   return {
+    answerContext,
+    feedbackSubmission,
+    submitFeedback,
+    feedback,
+    loadFeedback,
+    openFeedback,
+    openFeedbackSource: (citation: Citation) => openSource(citation, 'feedback'),
     canUpload,
     uploadTarget,
     uploadReceipt,

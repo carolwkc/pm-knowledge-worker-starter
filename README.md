@@ -1,11 +1,12 @@
 # PM Knowledge Worker
 
 An evidence-first product knowledge API for product managers, designers, and tech leads.
-Tasks 001–008 provide Markdown/text ingestion, immutable provenance, authenticated
+Tasks 001–009 provide Markdown/text ingestion, immutable provenance, authenticated
 workspace access, keyword/semantic/hybrid search, deterministic quoted answers,
 explicitly reviewed decision quotations, web Q&A with source navigation, and a
 source catalogue with title filtering and version history, and browser-based
-decision proposal generation, owner review, approved decision browsing and browser uploads.
+decision proposal generation, owner review, approved decision browsing, browser uploads
+and explicitly submitted Q&A feedback with owner inspection.
 All supplied content is synthetic. Local CPU embeddings are opt-in; keyword mode
 remains the default.
 
@@ -87,9 +88,9 @@ role. All documents in a workspace inherit that workspace's access:
 
 | Role | Access |
 | --- | --- |
-| `reader` | Search, ask and read approved decisions |
+| `reader` | Search, ask, submit Q&A feedback and read approved decisions |
 | `editor` | Reader access plus uploads, source versions and generating/inspecting proposals |
-| `owner` | Editor access plus approving/rejecting proposals and managing memberships |
+| `owner` | Editor access plus approving/rejecting proposals, inspecting feedback and managing memberships |
 
 Owners manage already provisioned users through `/members/{user_id}` (see the API
 table below). They can promote another owner before removing/demoting themselves.
@@ -172,8 +173,9 @@ replace the citation. Expand **Source details** for source/version/chunk IDs, of
 ingestion time, hash and inert external URI metadata. Source text is never rendered
 as HTML or interpreted as instructions.
 
-Tokens, questions and answers stay in tab memory, without browser storage or saved
-history. **Disconnect** and page reload clear the session. Changing workspaces clears
+Tokens, questions and answers stay in tab memory, without browser storage or automatic
+saved history. Task 009 saves Q&A context only when feedback is explicitly submitted.
+**Disconnect** and page reload clear the session. Changing workspaces clears
 the current question/evidence; revoked credentials require reconnecting. An access
 failure refreshes the available workspace list. Content already received cannot be
 retracted until a request detects a permission change or the session is cleared.
@@ -290,6 +292,43 @@ reload or detected access loss. Access changes take effect when detected by a re
 See [Task 008 specification](tasks/008-browser-uploads.md) and
 [verification and limitations](docs/TASK_008.md).
 
+## Task 009: submit and inspect Q&A feedback
+
+After asking a question, any member can select **Helpful** or **Not helpful**, add an
+optional comment and choose **Submit feedback**. Not helpful also offers an optional
+Missing evidence, Irrelevant evidence or Other reason. Comments are trimmed, limited
+to 1,000 Unicode characters and cannot contain NUL. Blank comments are omitted.
+Both quoted answers and insufficient-evidence results accept feedback.
+
+Submission explicitly saves the original question, retrieval mode, displayed answer,
+citations and comment for workspace owners. Editing the question or mode after an
+answer arrives does not change that context. Ordinary questions are never saved.
+Saved feedback shows a receipt; that completed answer cannot be submitted again in
+the tab. After an uncertain outcome, **Retry feedback submission** repeats only the
+same frozen submission UUID and payload. No write retries happen automatically.
+Identical concurrent/repeated submissions return the same receipt; a changed payload
+using the same identifier receives 409.
+
+Owners choose **Feedback** to inspect newest-first, 20-item pages, filter by rating,
+and open **User-reported Q&A context**. Select a citation to inspect its exact original
+version with verified highlighting. Historical evidence remains valid. Citation text
+is checked against stored chunks at submission; the report does not establish that
+the API returned this result for that question, nor that an opinion is factual truth.
+Feedback does not approve decisions or change source evidence.
+
+Unsent drafts clear on view changes. Completed Q&A and submitted/uncertain feedback
+remain in memory in the same workspace. New questions, workspace/session changes,
+reload or detected access loss clear them. Owner demotion removes the feedback view.
+Navigation may abort a request while its server transaction still commits.
+All comments and metadata remain inert text; no external service is called.
+
+Feedback snapshots persist until their workspace is removed, including if an operator
+removes original sources directly. There is no feedback editing, deletion, resolution,
+analytics or retention-management UI. Source reads fail safely if originals are gone.
+Author attribution uses stable user UUIDs. Freshness/pagination are read-time snapshots.
+See [Task 009 specification](tasks/009-answer-feedback.md) and
+[verification and limitations](docs/TASK_009.md).
+
 ### Web development and host serving
 
 Use Node 24+ and npm; Node 22.13+ on the 22.x line is also supported.
@@ -332,12 +371,12 @@ npm --prefix apps/web exec -- playwright install chromium
 For real-browser integration, use a dedicated Compose project and unused ports:
 
 ```sh
-POSTGRES_PASSWORD=localdev POSTGRES_PORT=55438 API_PORT=58008 EMBEDDINGS_ENABLED=false \
-  docker compose -p minnetonka-task008 -f compose.yaml \
+POSTGRES_PASSWORD=localdev POSTGRES_PORT=55439 API_PORT=58009 EMBEDDINGS_ENABLED=false \
+  docker compose -p dakar-task009 -f compose.yaml \
   -f apps/web/e2e/compose.yaml up -d --build --wait
 
-E2E_DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55438/pmknowledge_test \
-E2E_BASE_URL=http://127.0.0.1:58008 \
+E2E_DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55439/pmknowledge_test \
+E2E_BASE_URL=http://127.0.0.1:58009 \
   npm --prefix apps/web run test:e2e
 ```
 
@@ -352,11 +391,12 @@ screenshots are disabled to avoid recording credentials/source content. An optio
 walkthrough. `E2E_DECISION_SCREENSHOT_PATH` captures the synthetic decision evidence
 walkthrough. Save screenshots under `.context/`.
 `E2E_UPLOAD_SCREENSHOT_PATH` captures only the synthetic upload form after connecting.
+`E2E_FEEDBACK_SCREENSHOT_PATH` captures the synthetic owner feedback/evidence view.
 
 Run the Python checks against the same dedicated database, separately from browser tests:
 
 ```sh
-TEST_DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55438/pmknowledge_test \
+TEST_DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55439/pmknowledge_test \
   uv run pytest -q
 uv run ruff check .
 uv run ruff format --check .
@@ -387,6 +427,9 @@ transitive range; linting/build/test compatibility is verified with that overrid
 | `GET /api/v1/workspaces/{workspace_id}/sources/{source_id}/versions/{version_id}` | Member token; exact source/version IDs | `200` original text, provenance and computed freshness; historical versions allowed |
 | `GET /api/v1/workspaces/{workspace_id}/search` | Query `q`, optional `limit` (default 5, range 1–20), `mode` | `200 {results:[...]}` ranked excerpts |
 | `POST /api/v1/workspaces/{workspace_id}/ask` | JSON `{question, limit?, mode?}` | `200 {answer, status, sources}`; at most three quoted citations |
+| `POST /api/v1/workspaces/{workspace_id}/feedback` | Member token; JSON `{submission_id, question, mode, answer, rating, reason?, comment?}` | `201` receipt; identical normalized replay `200`, changed submission `409` |
+| `GET /api/v1/workspaces/{workspace_id}/feedback` | Owner token; `rating=all\|helpful\|not_helpful`, `limit` (default 20, max 100), `offset` | `200 {feedback, has_more}`; summaries only |
+| `GET /api/v1/workspaces/{workspace_id}/feedback/{feedback_id}` | Owner token | `200` saved user-reported Q&A context and comment |
 | `POST /api/v1/workspaces/{workspace_id}/sources/{source_id}/versions/{version_id}/proposals` | Editor/owner token; specified latest version | `200 {proposals, created_count}` |
 | `GET /api/v1/workspaces/{workspace_id}/proposals` | Editor/owner token; `status`, `limit`, `offset` | `200 {proposals}`; default pending |
 | `GET /api/v1/workspaces/{workspace_id}/proposals/{proposal_id}` | Editor/owner token | `200` proposal, evidence and review |

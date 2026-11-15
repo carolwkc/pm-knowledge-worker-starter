@@ -14,7 +14,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -175,3 +175,32 @@ class ApprovedDecision(Base):
         ForeignKey("knowledge_proposal.id", ondelete="CASCADE"), unique=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AnswerFeedback(Base):
+    __tablename__ = "answer_feedback"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id", "created_by", "submission_id", name="uq_feedback_submission"
+        ),
+        CheckConstraint("rating IN ('helpful', 'not_helpful')", name="ck_feedback_rating"),
+        CheckConstraint("mode IN ('keyword', 'semantic', 'hybrid')", name="ck_feedback_mode"),
+        CheckConstraint(
+            "reason IS NULL OR (rating = 'not_helpful' AND reason IN "
+            "('missing_evidence', 'irrelevant_evidence', 'other'))",
+            name="ck_feedback_reason",
+        ),
+        Index("ix_feedback_workspace_created", "workspace_id", "created_at", "id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"))
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("app_user.id"))
+    submission_id: Mapped[UUID]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    question: Mapped[str] = mapped_column(Text)
+    mode: Mapped[str] = mapped_column(String(16))
+    rating: Mapped[str] = mapped_column(String(16))
+    reason: Mapped[str | None] = mapped_column(String(32))
+    comment: Mapped[str | None] = mapped_column(Text)
+    answer: Mapped[dict[str, Any]] = mapped_column(JSONB)

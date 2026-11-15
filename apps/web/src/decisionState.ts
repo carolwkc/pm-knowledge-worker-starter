@@ -1,7 +1,7 @@
 import type { Decision, Proposal, ProposalFilter, ReviewAction, SourceVersion } from './api';
 import { evidenceSpan } from './evidence';
 
-export type WorkspaceView = 'ask' | 'browse' | 'decisions' | 'proposals';
+export type WorkspaceView = 'ask' | 'browse' | 'decisions' | 'proposals' | 'feedback';
 export type KnowledgeRecord = Decision | Proposal;
 export interface DecisionState {
   records: KnowledgeRecord[];

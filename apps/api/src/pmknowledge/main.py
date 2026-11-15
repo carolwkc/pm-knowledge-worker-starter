@@ -38,6 +38,7 @@ from pmknowledge.decisions import (
 )
 from pmknowledge.documents import ingest, list_source_versions, list_sources, read_source_version
 from pmknowledge.embeddings import Embedder, EmbeddingUnavailable, LocalEmbedder
+from pmknowledge.feedback import list_feedback, read_feedback, submit_feedback
 from pmknowledge.models import User, Workspace, WorkspaceMembership
 from pmknowledge.retrieval import ask, search
 from pmknowledge.schemas import (
@@ -46,6 +47,11 @@ from pmknowledge.schemas import (
     DecisionList,
     DecisionRead,
     ExtractionRead,
+    FeedbackCreate,
+    FeedbackFilter,
+    FeedbackList,
+    FeedbackRead,
+    FeedbackReceipt,
     IngestRead,
     JoinedWorkspace,
     MembershipList,
@@ -393,6 +399,46 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         return read_source_version(
             session, workspace_id, source_id, version_id, principal=principal
         )
+
+    @routes.post(
+        "/api/v1/workspaces/{workspace_id}/feedback",
+        response_model=FeedbackReceipt,
+        status_code=201,
+    )
+    def save_feedback(
+        workspace_id: UUID,
+        body: FeedbackCreate,
+        response: Response,
+        session: Database,
+        principal: Identity,
+    ) -> FeedbackReceipt:
+        result, created = submit_feedback(session, workspace_id, body, principal=principal)
+        response.status_code = 201 if created else 200
+        return result
+
+    @routes.get("/api/v1/workspaces/{workspace_id}/feedback", response_model=FeedbackList)
+    def browse_feedback(
+        workspace_id: UUID,
+        session: Database,
+        principal: Identity,
+        rating: FeedbackFilter = "all",
+        limit: Annotated[int, Query(ge=1, le=100)] = 20,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> FeedbackList:
+        return list_feedback(
+            session, workspace_id, principal=principal, rating=rating, limit=limit, offset=offset
+        )
+
+    @routes.get(
+        "/api/v1/workspaces/{workspace_id}/feedback/{feedback_id}", response_model=FeedbackRead
+    )
+    def get_feedback(
+        workspace_id: UUID,
+        feedback_id: UUID,
+        session: Database,
+        principal: Identity,
+    ) -> FeedbackRead:
+        return read_feedback(session, workspace_id, feedback_id, principal=principal)
 
     @routes.post("/api/v1/workspaces/{workspace_id}/ask", response_model=AnswerRead)
     def ask_question(

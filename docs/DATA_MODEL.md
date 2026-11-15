@@ -134,6 +134,27 @@ Migration `0004` neither backfills nor rewrites existing records. Downgrade remo
 only Task 004 tables. Old source versions and accepted decisions remain stored;
 `source_is_latest` is computed from version numbering, not an automatic supersession.
 
+## Task 009 user-reported Q&A feedback
+
+`answer_feedback` contains a UUID, workspace FK (cascade), authenticated `created_by`
+user FK (preserves attribution), client `submission_id`, timezone-aware `created_at`,
+question, retrieval mode, helpful/not_helpful rating, optional negative reason/comment,
+and a JSONB answer snapshot containing status, text and immutable citation references.
+The snapshot is checked against exact workspace-scoped source chunks at submission.
+It is user-reported context, not a verified history of API responses.
+
+A unique `(workspace_id, created_by, submission_id)` constraint serializes concurrent
+retries. The service compares the normalized payload, returning the original receipt
+or a conflict. An index on workspace/time/UUID supports deterministic newest-first
+pagination. Database checks constrain rating/mode/reason; Pydantic and services bound
+and validate the snapshot. Owner-only list responses omit full answers/comments.
+
+Migration `0005` adds only this table/index; downgrade removes feedback only. Snapshots
+have no source FKs, retain their copies after privileged source removal and disappear
+when the workspace is deleted. There is no feedback edit/delete/retention API. Ask
+does not write feedback or query-history rows. User deletion remains an operator-only
+concern; referenced authors cannot be deleted while attribution exists.
+
 ## Later knowledge entities (beyond Task 004)
 
 strategy, customer, insight, opportunity, initiative, decision, evidence, competitor, entity_relation, review_event.
