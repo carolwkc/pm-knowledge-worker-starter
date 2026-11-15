@@ -1,5 +1,8 @@
 # Task 003: authenticated workspace access
 
+Historical verification record: Task 003 subsequently merged as PR #3 before
+Task 004 began. The review-boundary notes below describe its original handoff.
+
 ## Delivered slice
 
 - Mandatory opaque bearer tokens across `/api/v1`; public health, OpenAPI and docs.

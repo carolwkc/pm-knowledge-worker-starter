@@ -7,9 +7,9 @@
 - Task 003: Implement authenticated workspace access and verified permission filters.
 - Task 004: Add knowledge extraction proposals and reviewer approval flow.
 
-Tasks 001–002 are merged (PRs #1 and #2). Task 003 is implemented and awaiting
-review; see [verification and limitations](docs/TASK_003.md).
-Review Task 003 before beginning Task 004.
+Tasks 001–003 are merged (PRs #1, #2 and #3). Task 004 is implemented for review;
+see [verification and limitations](docs/TASK_004.md).
+Review Task 004 before beginning the next milestone.
 
 ## Milestone 2: Team Knowledge Experience
 

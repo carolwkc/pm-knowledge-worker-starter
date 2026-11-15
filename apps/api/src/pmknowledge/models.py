@@ -131,3 +131,47 @@ class ChunkEmbedding(Base):
     )
     model_id: Mapped[str] = mapped_column(String(200), primary_key=True)
     embedding: Mapped[list[float]] = mapped_column(Vector(384))
+
+
+class KnowledgeProposal(Base):
+    __tablename__ = "knowledge_proposal"
+    __table_args__ = (
+        UniqueConstraint("chunk_id", "extractor_version", name="uq_proposal_chunk_extractor"),
+        CheckConstraint("status IN ('pending', 'approved', 'rejected')", name="ck_proposal_status"),
+        Index("ix_proposal_workspace_created", "workspace_id", "created_at", "id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"))
+    chunk_id: Mapped[UUID] = mapped_column(ForeignKey("source_chunk.id", ondelete="CASCADE"))
+    statement: Mapped[str] = mapped_column(Text)
+    extractor_version: Mapped[str] = mapped_column(String(100))
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    status: Mapped[str] = mapped_column(String(16), server_default="pending")
+
+
+class ReviewEvent(Base):
+    __tablename__ = "review_event"
+    __table_args__ = (CheckConstraint("action IN ('approve', 'reject')", name="ck_review_action"),)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    proposal_id: Mapped[UUID] = mapped_column(
+        ForeignKey("knowledge_proposal.id", ondelete="CASCADE"), unique=True
+    )
+    reviewer_id: Mapped[UUID] = mapped_column(ForeignKey("app_user.id"))
+    action: Mapped[str] = mapped_column(String(16))
+    comment: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ApprovedDecision(Base):
+    __tablename__ = "approved_decision"
+    __table_args__ = (Index("ix_decision_workspace_created", "workspace_id", "created_at", "id"),)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"))
+    proposal_id: Mapped[UUID] = mapped_column(
+        ForeignKey("knowledge_proposal.id", ondelete="CASCADE"), unique=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -108,3 +108,63 @@ class AnswerRead(BaseModel):
     answer: str
     status: Literal["grounded", "insufficient_evidence"]
     sources: list[Citation]
+
+
+ProposalStatus = Literal["pending", "approved", "rejected"]
+ProposalFilter = Literal["pending", "approved", "rejected", "all"]
+ReviewAction = Literal["approve", "reject"]
+
+
+class ReviewWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: ReviewAction
+    comment: QueryText | None = None
+
+
+class ReviewRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    reviewer_id: UUID
+    action: ReviewAction
+    comment: str | None
+    created_at: datetime
+
+
+class ProposalRead(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    kind: Literal["decision"] = "decision"
+    statement: str
+    evidence: Evidence
+    extraction_method: Literal["deterministic_source_quotation"] = "deterministic_source_quotation"
+    extractor_version: str
+    created_by: UUID
+    created_at: datetime
+    status: ProposalStatus
+    review: ReviewRead | None
+    decision_id: UUID | None
+
+
+class ProposalList(BaseModel):
+    proposals: list[ProposalRead]
+
+
+class ExtractionRead(ProposalList):
+    created_count: int
+
+
+class DecisionRead(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    proposal_id: UUID
+    statement: str
+    evidence: Evidence
+    approved_by: UUID
+    approved_at: datetime
+    source_is_latest: bool
+
+
+class DecisionList(BaseModel):
+    decisions: list[DecisionRead]

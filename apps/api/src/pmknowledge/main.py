@@ -28,6 +28,13 @@ from sqlalchemy.orm import Session
 from pmknowledge.access import change_membership, require_workspace_access
 from pmknowledge.auth import Principal, authenticate, invalid_credentials
 from pmknowledge.config import Settings
+from pmknowledge.decisions import (
+    generate_proposals,
+    get_proposal,
+    list_proposals,
+    read_decisions,
+    review_proposal,
+)
 from pmknowledge.documents import ingest
 from pmknowledge.embeddings import Embedder, EmbeddingUnavailable, LocalEmbedder
 from pmknowledge.models import User, Workspace, WorkspaceMembership
@@ -35,13 +42,20 @@ from pmknowledge.retrieval import ask, search
 from pmknowledge.schemas import (
     AnswerRead,
     AskRequest,
+    DecisionList,
+    DecisionRead,
+    ExtractionRead,
     IngestRead,
     JoinedWorkspace,
     MembershipList,
     MembershipRead,
     MembershipWrite,
+    ProposalFilter,
+    ProposalList,
+    ProposalRead,
     QueryText,
     RetrievalMode,
+    ReviewWrite,
     SearchRead,
     UserRead,
     WorkspaceCreate,
@@ -333,6 +347,94 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             embedder=embedder,
             min_score=settings.semantic_min_score,
         )
+
+    @routes.post(
+        "/api/v1/workspaces/{workspace_id}/sources/{source_id}/versions/{version_id}/proposals",
+        response_model=ExtractionRead,
+    )
+    def extract_decision_proposals(
+        workspace_id: UUID,
+        source_id: UUID,
+        version_id: UUID,
+        session: Database,
+        principal: Identity,
+    ) -> ExtractionRead:
+        return generate_proposals(session, workspace_id, source_id, version_id, principal=principal)
+
+    @routes.get("/api/v1/workspaces/{workspace_id}/proposals", response_model=ProposalList)
+    def proposal_queue(
+        workspace_id: UUID,
+        session: Database,
+        principal: Identity,
+        status: ProposalFilter = "pending",
+        limit: Annotated[int, Query(ge=1, le=100)] = 50,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> ProposalList:
+        return ProposalList(
+            proposals=list_proposals(
+                session,
+                workspace_id,
+                principal=principal,
+                status=status,
+                limit=limit,
+                offset=offset,
+            )
+        )
+
+    @routes.get(
+        "/api/v1/workspaces/{workspace_id}/proposals/{proposal_id}", response_model=ProposalRead
+    )
+    def proposal_detail(
+        workspace_id: UUID,
+        proposal_id: UUID,
+        session: Database,
+        principal: Identity,
+    ) -> ProposalRead:
+        return get_proposal(session, workspace_id, proposal_id, principal=principal)
+
+    @routes.post(
+        "/api/v1/workspaces/{workspace_id}/proposals/{proposal_id}/review",
+        response_model=ProposalRead,
+    )
+    def review_decision_proposal(
+        workspace_id: UUID,
+        proposal_id: UUID,
+        body: ReviewWrite,
+        session: Database,
+        principal: Identity,
+    ) -> ProposalRead:
+        return review_proposal(session, workspace_id, proposal_id, body, principal=principal)
+
+    @routes.get("/api/v1/workspaces/{workspace_id}/decisions", response_model=DecisionList)
+    def decision_list(
+        workspace_id: UUID,
+        session: Database,
+        principal: Identity,
+        limit: Annotated[int, Query(ge=1, le=100)] = 50,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> DecisionList:
+        return DecisionList(
+            decisions=read_decisions(
+                session,
+                workspace_id,
+                principal=principal,
+                limit=limit,
+                offset=offset,
+            )
+        )
+
+    @routes.get(
+        "/api/v1/workspaces/{workspace_id}/decisions/{decision_id}", response_model=DecisionRead
+    )
+    def decision_detail(
+        workspace_id: UUID,
+        decision_id: UUID,
+        session: Database,
+        principal: Identity,
+    ) -> DecisionRead:
+        return read_decisions(session, workspace_id, principal=principal, decision_id=decision_id)[
+            0
+        ]
 
     api.include_router(routes)
     return api
