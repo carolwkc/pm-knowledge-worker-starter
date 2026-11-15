@@ -163,7 +163,17 @@ def ask(
         embedder=embedder,
         min_score=min_score,
     )[:3]
-    if not hits:
+    return compose_answer(
+        [
+            Citation(**hit.model_dump(exclude={"score"}), citation=str(index))
+            for index, hit in enumerate(hits, 1)
+        ]
+    )
+
+
+def compose_answer(citations: list[Citation]) -> AnswerRead:
+    """Pure quotation formatting, also used to check reported feedback context."""
+    if not citations:
         return AnswerRead(
             answer=(
                 "Insufficient evidence: no matching source excerpts were found in this workspace."
@@ -171,10 +181,6 @@ def ask(
             status="insufficient_evidence",
             sources=[],
         )
-    citations = [
-        Citation(**hit.model_dump(exclude={"score"}), citation=str(index))
-        for index, hit in enumerate(hits, 1)
-    ]
     quotes = "\n\n".join(f'[{c.citation}] "{c.excerpt}"' for c in citations)
     return AnswerRead(
         answer=f"Extracted evidence (verbatim source text):\n\n{quotes}",

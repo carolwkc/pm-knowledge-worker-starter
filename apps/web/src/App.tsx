@@ -4,6 +4,8 @@ import { SourcePanel } from './SourcePanel';
 import { SourceBrowser } from './SourceBrowser';
 import { DecisionBrowser } from './DecisionBrowser';
 import { UploadForm } from './UploadForm';
+import { FeedbackForm } from './FeedbackForm';
+import { FeedbackBrowser } from './FeedbackBrowser';
 import { useKnowledge } from './useKnowledge';
 
 export default function App() {
@@ -31,7 +33,9 @@ export default function App() {
                       ? 'Recording your review…'
                       : desk.busy === 'upload'
                         ? 'Saving your source and opening its evidence…'
-                        : '';
+                        : desk.busy === 'feedback'
+                          ? 'Saving feedback…'
+                          : '';
 
   return (
     <div className="app-shell">
@@ -127,6 +131,15 @@ export default function App() {
             </div>
             {desk.workspaces.length > 0 && (
               <nav className="view-navigation" aria-label="Workspace views">
+                {selected?.role === 'owner' && (
+                  <button
+                    className="quiet-button"
+                    aria-pressed={desk.view === 'feedback'}
+                    onClick={() => desk.selectView('feedback')}
+                  >
+                    Feedback
+                  </button>
+                )}
                 <button
                   className="quiet-button"
                   aria-pressed={desk.view === 'ask'}
@@ -168,7 +181,9 @@ export default function App() {
               </section>
             ) : (
               <div className="desk-layout">
-                {desk.view === 'decisions' || desk.view === 'proposals' ? (
+                {desk.view === 'feedback' ? (
+                  <FeedbackBrowser desk={desk} />
+                ) : desk.view === 'decisions' || desk.view === 'proposals' ? (
                   <DecisionBrowser desk={desk} />
                 ) : desk.view === 'browse' ? (
                   <SourceBrowser
@@ -338,6 +353,15 @@ export default function App() {
                               ))}
                             </ul>
                           </>
+                        )}
+                        {desk.answerContext && (
+                          <FeedbackForm
+                            key={desk.answerContext.submission_id}
+                            submission={desk.feedbackSubmission}
+                            busy={desk.busy !== null}
+                            onSubmit={(draft) => void desk.submitFeedback(draft)}
+                            onRetry={() => void desk.submitFeedback()}
+                          />
                         )}
                       </section>
                     ) : (

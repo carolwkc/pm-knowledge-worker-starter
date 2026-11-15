@@ -49,6 +49,156 @@ const test = base.extend<{ seed: Seed }>({
   },
 });
 
+test('reader feedback saves explicit context and owners inspect pinned historical evidence', async ({
+  page,
+  request,
+  seed,
+}) => {
+  const workspace = seed.workspaces[0];
+  const root = `/api/v1/workspaces/${workspace}`;
+  const ownerHeaders = { Authorization: `Bearer ${seed.ownerToken}` };
+  const original = 'Synthetic café quartzfeedback evidence.\r\n<img src=x onerror=alert(1)>\r\n';
+  const firstResponse = await request.post(`${root}/sources`, {
+    headers: ownerHeaders,
+    multipart: {
+      title: 'Synthetic feedback source',
+      external_uri: 'javascript:inert-feedback',
+      file: { name: 'feedback.md', mimeType: 'text/markdown', buffer: Buffer.from(original) },
+    },
+  });
+  expect(firstResponse.status()).toBe(201);
+  const first = await firstResponse.json();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await connectBrowser(page, seed.readerToken, workspace);
+  await expect(page.getByRole('button', { name: 'Feedback', exact: true })).toHaveCount(0);
+  await page.getByLabel('Your question', { exact: true }).fill('quartzfeedback');
+  await page.getByRole('button', { name: 'Ask question', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Submit feedback', exact: true })).toBeVisible();
+  expect(
+    (await (await request.get(`${root}/feedback`, { headers: ownerHeaders })).json()).feedback,
+  ).toHaveLength(0);
+  expect(
+    (
+      await request.post(`${root}/sources/${first.source_document_id}/versions`, {
+        headers: ownerHeaders,
+        multipart: {
+          file: {
+            name: 'changed.txt',
+            mimeType: 'text/plain',
+            buffer: Buffer.from('New current synthetic evidence.'),
+          },
+        },
+      })
+    ).status(),
+  ).toBe(201);
+  await page.getByLabel('Your question', { exact: true }).fill('Edited unsent draft');
+  await page.getByLabel('Retrieval mode', { exact: true }).selectOption('hybrid');
+  await page.getByLabel('Not helpful', { exact: true }).check();
+  await page.getByLabel('Reason (optional)', { exact: true }).selectOption('missing_evidence');
+  await page
+    .getByLabel('Feedback comment (optional)', { exact: true })
+    .fill('Synthetic 👋 <img src=x onerror=alert(1)>');
+  const saved = page.waitForResponse(
+    (r) => r.request().method() === 'POST' && r.url().endsWith('/feedback'),
+  );
+  await page.getByRole('button', { name: 'Submit feedback', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  expect((await saved).status()).toBe(201);
+  await expect(page.getByText(/Feedback saved/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Submit feedback', exact: true })).toHaveCount(0);
+  expect(
+    (
+      await request.get(`${root}/feedback`, {
+        headers: { Authorization: `Bearer ${seed.readerToken}` },
+      })
+    ).status(),
+  ).toBe(403);
+
+  await connectBrowser(page, seed.ownerToken, workspace);
+  await page.getByRole('button', { name: 'Feedback', exact: true }).click();
+  const listing = await (await request.get(`${root}/feedback`, { headers: ownerHeaders })).json();
+  expect(listing.feedback).toHaveLength(1);
+  const id = listing.feedback[0].id;
+  await page.getByRole('button', { name: `Open feedback ${id}`, exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'User-reported Q&A context', exact: true }),
+  ).toBeFocused();
+  await expect(page.getByText('Retrieval mode: keyword', { exact: true })).toBeVisible();
+  const detail = await (
+    await request.get(`${root}/feedback/${id}`, { headers: ownerHeaders })
+  ).json();
+  expect(detail.question).toBe('quartzfeedback');
+  expect(detail.answer.sources[0].document_version_id).toBe(first.document_version_id);
+  await page.getByRole('button', { name: '[1] Synthetic feedback source', exact: true }).click();
+  await expect(page.getByText('Historical version', { exact: true })).toBeVisible();
+  expect(await page.getByTestId('source-text').textContent()).toBe(original);
+  expect(await page.locator('mark').textContent()).toBe(detail.answer.sources[0].excerpt);
+  await expect(page.locator('img')).toHaveCount(0);
+  await expect(page.locator('a[href^="javascript:"]')).toHaveCount(0);
+  expect(
+    await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length })),
+  ).toEqual({ local: 0, session: 0 });
+  if (process.env.E2E_FEEDBACK_SCREENSHOT_PATH) {
+    await page.setViewportSize({ width: 1280, height: 960 });
+    await page.screenshot({ path: process.env.E2E_FEEDBACK_SCREENSHOT_PATH, fullPage: true });
+  }
+
+  await page.getByRole('button', { name: 'Ask', exact: true }).click();
+  await page.getByLabel('Your question', { exact: true }).fill('nonexistentplatypus');
+  await page.getByRole('button', { name: 'Ask question', exact: true }).click();
+  await page.getByLabel('Helpful', { exact: true }).check();
+  await page.getByRole('button', { name: 'Submit feedback', exact: true }).click();
+  await expect(page.getByText(/Feedback saved/)).toBeVisible();
+  const final = await (
+    await request.get(`${root}/feedback?rating=helpful`, { headers: ownerHeaders })
+  ).json();
+  expect(final.feedback).toHaveLength(1);
+  const missing = await (
+    await request.get(`${root}/feedback/${final.feedback[0].id}`, { headers: ownerHeaders })
+  ).json();
+  expect(missing.answer.status).toBe('insufficient_evidence');
+  expect(missing.answer.sources).toHaveLength(0);
+  expect(
+    (
+      await request.get(`/api/v1/workspaces/${seed.workspaces[1]}/feedback/${id}`, {
+        headers: ownerHeaders,
+      })
+    ).status(),
+  ).toBe(404);
+});
+
+test('initial feedback navigation leaves the owner view after external demotion', async ({
+  page,
+  request,
+  seed,
+}) => {
+  const workspace = seed.workspaces[0];
+  const root = `/api/v1/workspaces/${workspace}`;
+  await connectBrowser(page, seed.ownerToken, workspace);
+  expect(
+    (
+      await request.put(`${root}/members/${seed.users[2]}`, {
+        headers: { Authorization: `Bearer ${seed.ownerToken}` },
+        data: { role: 'owner' },
+      })
+    ).status(),
+  ).toBe(200);
+  expect(
+    (
+      await request.put(`${root}/members/${seed.users[0]}`, {
+        headers: { Authorization: `Bearer ${seed.editorToken}` },
+        data: { role: 'reader' },
+      })
+    ).status(),
+  ).toBe(200);
+  await page.getByRole('button', { name: 'Feedback', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Feedback', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Q&A feedback', exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole('heading', { name: 'What would you like to understand?', exact: true }),
+  ).toBeVisible();
+});
+
 test('browser uploads preserve bytes, answer citations and historical version identity', async ({
   page,
   request,

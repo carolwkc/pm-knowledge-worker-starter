@@ -129,6 +129,22 @@ and exact Unicode code-point spans, preserving CRLF before slicing; only verifie
 quotes receive a highlight. All document/answer/URI content remains inert text.
 Authenticated API responses, including failures, use no-store cache headers.
 
+### Task 009 explicit Q&A feedback
+
+Ordinary ask calls still return ephemeral deterministic quotations. Explicit member
+feedback submission saves user-reported question/mode/answer context in a separate
+workspace-scoped record. Source joins validate all citation identities, metadata,
+text and offsets, and the shared pure quotation composer validates answer formatting.
+This checks citation integrity, not whether this response was issued for the question.
+
+Only owners list/read feedback. Authenticated authors and atomic unique submission
+identifiers provide safe same-payload retries without exposing anyone else's records.
+No question history, external inference, knowledge promotion or resolution workflow is
+introduced. Browser generation guards/cancellation protect scope; uncertain writes
+retain their frozen submission and require an explicit retry. Feedback snapshots
+persist until workspace deletion and do not depend on the continued existence of
+original source rows. Original-version navigation still enforces current membership.
+
 ## Ingestion flow
 
 Authenticate user → verify editor/owner membership → validate file & workspace scope → save source metadata → parse text → hash/deduplicate → create version and chunks → index → return source/version identifiers.

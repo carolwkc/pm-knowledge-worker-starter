@@ -2,7 +2,14 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 ShortText = Annotated[
     str,
@@ -157,6 +164,81 @@ class AnswerRead(BaseModel):
     answer: str
     status: Literal["grounded", "insufficient_evidence"]
     sources: list[Citation]
+
+
+FeedbackRating = Literal["helpful", "not_helpful"]
+FeedbackReason = Literal["missing_evidence", "irrelevant_evidence", "other"]
+FeedbackFilter = Literal["all", "helpful", "not_helpful"]
+
+
+class FeedbackCitation(Citation):
+    model_config = ConfigDict(extra="forbid")
+
+    citation: Literal["1", "2", "3"]
+    title: Annotated[str, StringConstraints(min_length=1, max_length=200, pattern=r"^[^\x00]+$")]
+    external_uri: Annotated[str, StringConstraints(max_length=2048, pattern=r"^[^\x00]*$")] | None
+    excerpt: Annotated[str, StringConstraints(min_length=1, max_length=1000, pattern=r"^[^\x00]+$")]
+    ordinal: Annotated[int, Field(ge=0)]
+    start_char: Annotated[int, Field(ge=0)]
+    end_char: Annotated[int, Field(gt=0)]
+
+
+class FeedbackAnswer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    answer: Annotated[str, StringConstraints(min_length=1, max_length=4096, pattern=r"^[^\x00]+$")]
+    status: Literal["grounded", "insufficient_evidence"]
+    sources: Annotated[list[FeedbackCitation], Field(max_length=3)]
+
+
+class FeedbackCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    submission_id: UUID
+    question: QueryText
+    mode: RetrievalMode
+    answer: FeedbackAnswer
+    rating: FeedbackRating
+    reason: FeedbackReason | None = None
+    comment: QueryText | None = None
+
+    @field_validator("comment", mode="before")
+    @classmethod
+    def blank_comment(cls, value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value
+
+    @model_validator(mode="after")
+    def negative_reason_only(self) -> "FeedbackCreate":
+        if self.rating == "helpful" and self.reason is not None:
+            raise ValueError("Helpful feedback cannot have a negative reason")
+        return self
+
+
+class FeedbackReceipt(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    workspace_id: UUID
+    submission_id: UUID
+    created_at: datetime
+
+
+class FeedbackSummary(FeedbackReceipt):
+    created_by: UUID
+    question: str
+    mode: RetrievalMode
+    rating: FeedbackRating
+    reason: FeedbackReason | None
+
+
+class FeedbackRead(FeedbackSummary):
+    comment: str | None
+    answer: FeedbackAnswer
+
+
+class FeedbackList(BaseModel):
+    feedback: list[FeedbackSummary]
+    has_more: bool
 
 
 ProposalStatus = Literal["pending", "approved", "rejected"]

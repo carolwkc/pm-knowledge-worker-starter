@@ -61,6 +61,28 @@ textarea {
   resize: vertical;
   min-height: 110px;
 }
+.feedback-form {
+  margin-top: 1.5rem;
+}
+.feedback-form fieldset {
+  border: 1px solid #adbacb;
+  border-radius: 6px;
+  padding: 1rem;
+  min-width: 0;
+}
+.feedback-form legend {
+  font-weight: 600;
+}
+.feedback-form input[type='radio'] {
+  width: auto;
+  padding: 0;
+  margin: 0 0.4rem 0 0;
+  accent-color: #245bc8;
+}
+.feedback-form select,
+.feedback-form textarea {
+  margin-bottom: 0.8rem;
+}
 label {
   display: block;
   font-weight: 600;

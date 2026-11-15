@@ -69,6 +69,39 @@ export interface Answer {
   status: 'grounded' | 'insufficient_evidence';
   sources: Citation[];
 }
+export type FeedbackRating = 'helpful' | 'not_helpful';
+export type FeedbackFilter = 'all' | FeedbackRating;
+export type FeedbackReason = 'missing_evidence' | 'irrelevant_evidence' | 'other';
+export interface FeedbackCreate {
+  submission_id: string;
+  question: string;
+  mode: RetrievalMode;
+  answer: Answer;
+  rating: FeedbackRating;
+  reason?: FeedbackReason;
+  comment?: string;
+}
+export interface FeedbackReceipt {
+  id: string;
+  workspace_id: string;
+  submission_id: string;
+  created_at: string;
+}
+export interface FeedbackSummary extends FeedbackReceipt {
+  created_by: string;
+  question: string;
+  mode: RetrievalMode;
+  rating: FeedbackRating;
+  reason: FeedbackReason | null;
+}
+export interface FeedbackRecord extends FeedbackSummary {
+  comment: string | null;
+  answer: Answer;
+}
+export interface FeedbackList {
+  feedback: FeedbackSummary[];
+  has_more: boolean;
+}
 export interface SourceVersion {
   workspace_id: string;
   source_document_id: string;
@@ -149,6 +182,26 @@ async function request<T>(
 
 const workspacePath = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
 export const api = {
+  submitFeedback: (token: string, workspace: string, body: FeedbackCreate, signal: AbortSignal) =>
+    request<FeedbackReceipt>(`${workspacePath(workspace)}/feedback`, token, signal, body),
+  feedback: (
+    token: string,
+    workspace: string,
+    rating: FeedbackFilter,
+    offset: number,
+    signal: AbortSignal,
+  ) =>
+    request<FeedbackList>(
+      `${workspacePath(workspace)}/feedback?${new URLSearchParams({ rating, offset: String(offset), limit: '20' })}`,
+      token,
+      signal,
+    ),
+  feedbackDetail: (token: string, workspace: string, id: string, signal: AbortSignal) =>
+    request<FeedbackRecord>(
+      `${workspacePath(workspace)}/feedback/${encodeURIComponent(id)}`,
+      token,
+      signal,
+    ),
   uploadSource: (
     token: string,
     workspace: string,

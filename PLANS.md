@@ -21,7 +21,9 @@ See the historical [Task 004 verification and limitations](docs/TASK_004.md).
   See [specification](tasks/007-decision-browser-review.md) and [verification](docs/TASK_007.md).
 - Task 008: Browser uploads for new sources and immutable source versions.
   See [specification](tasks/008-browser-uploads.md) and [verification](docs/TASK_008.md).
-- Later tasks: user feedback.
+- Task 009: Explicit Q&A feedback with owner-only inspection and original citations.
+  See [specification](tasks/009-answer-feedback.md) and [verification](docs/TASK_009.md).
+- Later tasks: informed by pilot feedback.
 
 ## Milestone 3: Agent Harness
 
