@@ -43,6 +43,25 @@ returns `insufficient_evidence` with no citations. No model is called or configu
 
 See [Task 001 review and verification](TASK_001.md) for decisions and remaining gaps.
 
+### Task 002 local retrieval extension
+
+An opt-in CPU encoder generates 384-dimensional English embeddings from cached
+public model weights. Only the explicit download CLI may retrieve weights; runtime
+model loading uses local files only. Enabled ingestion stores derived embeddings
+atomically alongside new chunks. A workspace-scoped, repeatable CLI backfills older
+sources. Original evidence is unchanged.
+
+The same search/ask API accepts keyword (default), semantic, or hybrid mode. Semantic
+retrieval uses exact pgvector cosine ranking above a configurable similarity floor.
+Hybrid merges up to 20 workspace-filtered candidates per retriever using reciprocal
+rank fusion (k=60). Explicit semantic/hybrid requests fail safely if inference is
+disabled/unavailable. Answer composition remains deterministic quotation.
+
+Synthetic evaluation reports positive recall/MRR and unrelated-question abstention
+separately, with temporary fixture data rolled back. Lexical false positives remain
+possible in hybrid mode; similarity and fusion scores do not establish claim support.
+See [Task 002 verification](TASK_002.md) for measured results and tradeoffs.
+
 ## Ingestion flow
 
 Validate file & workspace scope → save source metadata → parse text → hash/deduplicate → create version and chunks → index → return source/version identifiers.

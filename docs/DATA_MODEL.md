@@ -76,6 +76,20 @@ All retrieval joins must be scoped by workspace_id. Use migrations and explicit 
 
 Without a configured model, a deterministic extractive response is acceptable; do not imply that it has performed reasoning.
 
+## Task 002 derived embeddings
+
+`chunk_embedding` stores `chunk_id` (FK with cascade), `model_id`, and a 384-dimensional
+pgvector `embedding`. The chunk/model pair is the primary key; repeated ingestion
+and backfill use conflict-safe inserts. Embeddings are derived data and never replace
+source text or offsets. Current local encoder: `BAAI/bge-small-en-v1.5` via FastEmbed.
+
+Both vector and keyword queries join through the version and source document to
+filter by workspace and exclude superseded versions before ranking. Backfill only
+selects missing vectors for latest versions in an explicitly requested workspace.
+Inference/inserts run in batches of 64 within the caller's transaction; failures
+roll back the whole ingestion/backfill. Exact cosine search is used at this scale;
+there is no approximate index or independent vector service.
+
 ## Later knowledge entities
 
 strategy, customer, insight, opportunity, initiative, decision, evidence, competitor, entity_relation, review_event.

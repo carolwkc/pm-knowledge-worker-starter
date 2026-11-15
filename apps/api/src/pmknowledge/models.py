@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     CheckConstraint,
     Computed,
@@ -86,3 +87,13 @@ class SourceChunk(Base):
     search_vector: Mapped[Any] = mapped_column(
         TSVECTOR, Computed("to_tsvector('english'::regconfig, text)", persisted=True)
     )
+
+
+class ChunkEmbedding(Base):
+    __tablename__ = "chunk_embedding"
+
+    chunk_id: Mapped[UUID] = mapped_column(
+        ForeignKey("source_chunk.id", ondelete="CASCADE"), primary_key=True
+    )
+    model_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    embedding: Mapped[list[float]] = mapped_column(Vector(384))

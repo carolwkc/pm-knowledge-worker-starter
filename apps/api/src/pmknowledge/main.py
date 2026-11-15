@@ -3,7 +3,7 @@ import logging
 from collections.abc import AsyncIterator, Callable, Coroutine, Iterator
 from contextlib import asynccontextmanager
 from time import monotonic
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from uuid import UUID
 
 from fastapi import (
@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from pmknowledge.config import Settings
 from pmknowledge.documents import ingest
+from pmknowledge.embeddings import Embedder, EmbeddingUnavailable, LocalEmbedder
 from pmknowledge.models import Workspace
 from pmknowledge.retrieval import ask, search
 from pmknowledge.schemas import (
@@ -32,6 +33,7 @@ from pmknowledge.schemas import (
     AskRequest,
     IngestRead,
     QueryText,
+    RetrievalMode,
     SearchRead,
     WorkspaceCreate,
     WorkspaceRead,
@@ -51,7 +53,19 @@ def get_session(request: Request) -> Iterator[Session]:
 Database = Annotated[Session, Depends(get_session, scope="function")]
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def get_embedder(request: Request) -> Embedder | None:
+    return cast(Embedder | None, request.app.state.embedder)
+
+
+def get_settings(request: Request) -> Settings:
+    return cast(Settings, request.app.state.settings)
+
+
+Embedding = Annotated[Embedder | None, Depends(get_embedder)]
+Configuration = Annotated[Settings, Depends(get_settings)]
+
+
+def create_app(settings: Settings | None = None, *, embedder: Embedder | None = None) -> FastAPI:
     settings = settings or Settings()
     engine = create_engine(
         settings.database_url,
@@ -62,11 +76,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        yield
-        engine.dispose()
+        try:
+            yield
+        finally:
+            engine.dispose()
 
     api = FastAPI(title="PM Knowledge Worker", version="0.1.0", lifespan=lifespan)
     api.state.engine = engine
+    api.state.settings = settings
+    api.state.embedder = (
+        (embedder or LocalEmbedder(settings.embedding_cache_dir))
+        if settings.embeddings_enabled
+        else None
+    )
 
     @api.middleware("http")
     async def log_request(
@@ -110,6 +132,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         logger.error(json.dumps({"event": "database_error", "type": type(exc).__name__}))
         return JSONResponse(status_code=503, content={"detail": "Database unavailable"})
 
+    @api.exception_handler(EmbeddingUnavailable)
+    async def embedding_error(request: Request, exc: EmbeddingUnavailable) -> JSONResponse:
+        logger.error(json.dumps({"event": "embedding_unavailable"}))
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": (
+                    "Local embeddings unavailable; enable embeddings and download the model first"
+                )
+            },
+        )
+
     @api.get("/health")
     def health() -> dict[str, str]:
         try:
@@ -137,13 +171,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def create_source(
         workspace_id: UUID,
         session: Database,
+        embedder: Embedding,
         file: Annotated[UploadFile, File()],
         title: Annotated[str, Form(min_length=1, max_length=200)],
         external_uri: Annotated[str | None, Form(max_length=2048)] = None,
     ) -> IngestRead:
         if not title.strip() or "\x00" in title or (external_uri and "\x00" in external_uri):
             raise HTTPException(422, "Metadata must be non-empty and contain no NUL characters")
-        return ingest(session, workspace_id, file, title=title.strip(), external_uri=external_uri)
+        return ingest(
+            session,
+            workspace_id,
+            file,
+            title=title.strip(),
+            external_uri=external_uri,
+            embedder=embedder,
+        )
 
     @api.post(
         "/api/v1/workspaces/{workspace_id}/sources/{source_id}/versions",
@@ -156,9 +198,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         source_id: UUID,
         response: Response,
         session: Database,
+        embedder: Embedding,
         file: Annotated[UploadFile, File()],
     ) -> IngestRead:
-        result = ingest(session, workspace_id, file, source_id=source_id)
+        result = ingest(session, workspace_id, file, source_id=source_id, embedder=embedder)
         if result.duplicate:
             response.status_code = 200
         return result
@@ -167,14 +210,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def search_sources(
         workspace_id: UUID,
         session: Database,
+        settings: Configuration,
+        embedder: Embedding,
         q: Annotated[QueryText, Query()],
         limit: Annotated[int, Query(ge=1, le=20)] = 5,
+        mode: RetrievalMode = "keyword",
     ) -> SearchRead:
-        return SearchRead(results=search(session, workspace_id, q, limit))
+        return SearchRead(
+            results=search(
+                session,
+                workspace_id,
+                q,
+                limit,
+                mode=mode,
+                embedder=embedder,
+                min_score=settings.semantic_min_score,
+            )
+        )
 
     @api.post("/api/v1/workspaces/{workspace_id}/ask", response_model=AnswerRead)
-    def ask_question(workspace_id: UUID, body: AskRequest, session: Database) -> AnswerRead:
-        return ask(session, workspace_id, body.question, body.limit)
+    def ask_question(
+        workspace_id: UUID,
+        body: AskRequest,
+        session: Database,
+        settings: Configuration,
+        embedder: Embedding,
+    ) -> AnswerRead:
+        return ask(
+            session,
+            workspace_id,
+            body.question,
+            body.limit,
+            mode=body.mode,
+            embedder=embedder,
+            min_score=settings.semantic_min_score,
+        )
 
     return api
 

@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16.11-bookworm
+    image: pgvector/pgvector:0.8.1-pg16-bookworm
     environment:
       POSTGRES_USER: pmknowledge
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -22,6 +22,12 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://pmknowledge@db:5432/pmknowledge
       PGPASSWORD: ${POSTGRES_PASSWORD}
+      EMBEDDINGS_ENABLED: ${EMBEDDINGS_ENABLED:-false}
+      EMBEDDING_CACHE_DIR: /home/api/.cache/embeddings
+      SEMANTIC_MIN_SCORE: ${SEMANTIC_MIN_SCORE:-0.6}
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - embedding_models:/home/api/.cache/embeddings
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     depends_on:
@@ -35,3 +41,4 @@ services:
       retries: 20
 volumes:
   postgres_data:
+  embedding_models:

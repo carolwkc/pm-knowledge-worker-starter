@@ -1,0 +1,284 @@
+{
+  "model_id": "BAAI/bge-small-en-v1.5",
+  "k": 3,
+  "semantic_min_score": 0.6,
+  "documents": 8,
+  "queries": 10,
+  "positive_queries": 8,
+  "negative_queries": 2,
+  "modes": {
+    "keyword": {
+      "recall_at_k": 0.375,
+      "mrr_at_k": 0.375,
+      "no_evidence_accuracy": 0.5,
+      "cases": [
+        {
+          "id": "outage-paraphrase",
+          "retrieved": [],
+          "relevant": [
+            "incident"
+          ]
+        },
+        {
+          "id": "refund-paraphrase",
+          "retrieved": [],
+          "relevant": [
+            "billing"
+          ]
+        },
+        {
+          "id": "location-paraphrase",
+          "retrieved": [
+            "residency"
+          ],
+          "relevant": [
+            "residency"
+          ]
+        },
+        {
+          "id": "offline-paraphrase",
+          "retrieved": [
+            "offline",
+            "accessibility"
+          ],
+          "relevant": [
+            "offline"
+          ]
+        },
+        {
+          "id": "accessible-paraphrase",
+          "retrieved": [
+            "offline"
+          ],
+          "relevant": [
+            "accessibility"
+          ]
+        },
+        {
+          "id": "spreadsheet-paraphrase",
+          "retrieved": [],
+          "relevant": [
+            "export"
+          ]
+        },
+        {
+          "id": "login-paraphrase",
+          "retrieved": [
+            "incident"
+          ],
+          "relevant": [
+            "authentication"
+          ]
+        },
+        {
+          "id": "retention-exact",
+          "retrieved": [
+            "retention"
+          ],
+          "relevant": [
+            "retention"
+          ]
+        },
+        {
+          "id": "missing-cooking",
+          "retrieved": [
+            "authentication"
+          ],
+          "relevant": []
+        },
+        {
+          "id": "missing-astronomy",
+          "retrieved": [],
+          "relevant": []
+        }
+      ]
+    },
+    "semantic": {
+      "recall_at_k": 0.875,
+      "mrr_at_k": 0.875,
+      "no_evidence_accuracy": 1,
+      "cases": [
+        {
+          "id": "outage-paraphrase",
+          "retrieved": [
+            "incident"
+          ],
+          "relevant": [
+            "incident"
+          ]
+        },
+        {
+          "id": "refund-paraphrase",
+          "retrieved": [
+            "billing",
+            "retention"
+          ],
+          "relevant": [
+            "billing"
+          ]
+        },
+        {
+          "id": "location-paraphrase",
+          "retrieved": [
+            "residency"
+          ],
+          "relevant": [
+            "residency"
+          ]
+        },
+        {
+          "id": "offline-paraphrase",
+          "retrieved": [],
+          "relevant": [
+            "offline"
+          ]
+        },
+        {
+          "id": "accessible-paraphrase",
+          "retrieved": [
+            "accessibility"
+          ],
+          "relevant": [
+            "accessibility"
+          ]
+        },
+        {
+          "id": "spreadsheet-paraphrase",
+          "retrieved": [
+            "export"
+          ],
+          "relevant": [
+            "export"
+          ]
+        },
+        {
+          "id": "login-paraphrase",
+          "retrieved": [
+            "authentication"
+          ],
+          "relevant": [
+            "authentication"
+          ]
+        },
+        {
+          "id": "retention-exact",
+          "retrieved": [
+            "retention",
+            "offline"
+          ],
+          "relevant": [
+            "retention"
+          ]
+        },
+        {
+          "id": "missing-cooking",
+          "retrieved": [],
+          "relevant": []
+        },
+        {
+          "id": "missing-astronomy",
+          "retrieved": [],
+          "relevant": []
+        }
+      ]
+    },
+    "hybrid": {
+      "recall_at_k": 1,
+      "mrr_at_k": 0.875,
+      "no_evidence_accuracy": 0.5,
+      "cases": [
+        {
+          "id": "outage-paraphrase",
+          "retrieved": [
+            "incident"
+          ],
+          "relevant": [
+            "incident"
+          ]
+        },
+        {
+          "id": "refund-paraphrase",
+          "retrieved": [
+            "billing",
+            "retention"
+          ],
+          "relevant": [
+            "billing"
+          ]
+        },
+        {
+          "id": "location-paraphrase",
+          "retrieved": [
+            "residency"
+          ],
+          "relevant": [
+            "residency"
+          ]
+        },
+        {
+          "id": "offline-paraphrase",
+          "retrieved": [
+            "offline",
+            "accessibility"
+          ],
+          "relevant": [
+            "offline"
+          ]
+        },
+        {
+          "id": "accessible-paraphrase",
+          "retrieved": [
+            "offline",
+            "accessibility"
+          ],
+          "relevant": [
+            "accessibility"
+          ]
+        },
+        {
+          "id": "spreadsheet-paraphrase",
+          "retrieved": [
+            "export"
+          ],
+          "relevant": [
+            "export"
+          ]
+        },
+        {
+          "id": "login-paraphrase",
+          "retrieved": [
+            "incident",
+            "authentication"
+          ],
+          "relevant": [
+            "authentication"
+          ]
+        },
+        {
+          "id": "retention-exact",
+          "retrieved": [
+            "retention",
+            "offline"
+          ],
+          "relevant": [
+            "retention"
+          ]
+        },
+        {
+          "id": "missing-cooking",
+          "retrieved": [
+            "authentication"
+          ],
+          "relevant": []
+        },
+        {
+          "id": "missing-astronomy",
+          "retrieved": [],
+          "relevant": []
+        }
+      ]
+    }
+  },
+  "cases_sha256": "89021c67dbf4ce677e78681c17741d1f171623b71054c49f0be25ca062c7cd05",
+  "fastembed_version": "0.9.1"
+}
