@@ -1,9 +1,9 @@
 # PM Knowledge Worker
 
 An evidence-first product knowledge API for product managers, designers, and tech leads.
-Tasks 001–004 provide Markdown/text ingestion, immutable provenance, authenticated
+Tasks 001–005 provide Markdown/text ingestion, immutable provenance, authenticated
 workspace access, keyword/semantic/hybrid search, deterministic quoted answers,
-and explicitly reviewed decision quotations.
+explicitly reviewed decision quotations, and web Q&A with source navigation.
 All supplied content is synthetic. Local CPU embeddings are opt-in; keyword mode
 remains the default.
 
@@ -18,7 +18,7 @@ docker compose up -d --build --wait
 curl --fail http://localhost:8000/health
 ```
 
-The API runs at <http://localhost:8000>; interactive contracts are at
+The web UI runs at <http://localhost:8000>; interactive API contracts are at
 <http://localhost:8000/docs>. Compose waits for PostgreSQL and runs `alembic upgrade head`
 before starting the API. The image runs as a non-root user and installs only runtime
 dependencies from `uv.lock`. Both services bind to `127.0.0.1`.
@@ -155,6 +155,109 @@ The answer is labelled `Extracted evidence (verbatim source text)` and includes 
 quotes such as `Troubleshooting acceleration is the priority ... because engineers
 spend too long correlating logs during incidents.` It does not infer a new conclusion.
 
+## Task 005: ask and inspect evidence in the browser
+
+The normal Docker image includes the web build; no Node installation is needed to
+run it. After provisioning a token and uploading the synthetic fixtures above, open
+<http://localhost:8000>, enter the token and choose **Connect**. The first workspace
+you have joined is selected automatically. Ask the sample question in keyword mode,
+then choose a numbered source citation to inspect the original text.
+
+Answers remain deterministic quotations, not generated reasoning. The source panel
+shows the exact cited version and highlights only a verified matching character
+span. A **Historical version** label means newer source content exists; it does not
+replace the citation. Expand **Source details** for source/version/chunk IDs, offsets,
+ingestion time, hash and inert external URI metadata. Source text is never rendered
+as HTML or interpreted as instructions.
+
+Tokens, questions and answers stay in tab memory, without browser storage or saved
+history. **Disconnect** and page reload clear the session. Changing workspaces clears
+the current question/evidence; revoked credentials require reconnecting. An access
+failure refreshes the available workspace list. Content already received cannot be
+retracted until a request detects a permission change or the session is cleared.
+There is no default token, signup, upload screen or membership administration UI.
+Keep using the existing operator commands and APIs for those operations.
+
+Semantic/hybrid modes use the same opt-in local embeddings as the API. If unavailable,
+the UI reports that mode's failure and lets you select keyword; it never switches
+silently. No external model is called. The local deployment is loopback-only; this
+slice does not provide production SSO, TLS termination or a full identity lifecycle.
+
+### Web development and host serving
+
+Use Node 24+ and npm; Node 22.13+ on the 22.x line is also supported.
+Docker builds use Node 24. From the repository root:
+
+```sh
+npm --prefix apps/web ci
+npm --prefix apps/web run dev
+```
+
+Vite binds to `127.0.0.1:5173` and proxies `/api` to `http://127.0.0.1:8000` by
+default. Run the host API/database as described above. Set `API_PROXY_TARGET` when
+starting Vite to use a different local API port. No CORS configuration is needed.
+
+To serve the production UI from a host API instead:
+
+```sh
+npm --prefix apps/web run build
+WEB_DIST_DIR=apps/web/dist uv run uvicorn pmknowledge.main:app \
+  --host 127.0.0.1 --no-access-log
+```
+
+`WEB_DIST_DIR` is optional outside Docker. Unset means API-only mode; a configured
+path must contain built `index.html` and `assets/`, or startup fails clearly. The
+Docker runtime sets it to `/app/web`, runs as UID 10001 and contains no Node runtime.
+Only `/` and `/assets` serve the UI; `/docs`, `/health` and API 404s remain intact.
+Authenticated API responses, including failures, use `Cache-Control: no-store`.
+
+### Web verification
+
+```sh
+npm --prefix apps/web run typecheck
+npm --prefix apps/web run lint
+npm --prefix apps/web run format:check
+npm --prefix apps/web test
+npm --prefix apps/web run build
+npm --prefix apps/web exec -- playwright install chromium
+```
+
+For real-browser integration, use a dedicated Compose project and unused ports:
+
+```sh
+POSTGRES_PASSWORD=localdev POSTGRES_PORT=55434 API_PORT=58002 \
+  docker compose -p buenos-aires-task005 -f compose.yaml \
+  -f apps/web/e2e/compose.yaml up -d --build --wait
+
+E2E_DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55434/pmknowledge_test \
+E2E_BASE_URL=http://127.0.0.1:58002 \
+  npm --prefix apps/web run test:e2e
+```
+
+The override runs the API against `pmknowledge_test`. Tests use `uv` and trusted
+database credentials to provision synthetic users/workspaces, exercise real HTTP,
+then remove only those fixtures. `E2E_DATABASE_URL` is mandatory and must name a
+PostgreSQL database ending in `_test`; never point it at a production database.
+Browser tests expect embeddings to be disabled. Traces, videos and automatic
+screenshots are disabled to avoid recording credentials/source content. An optional
+`E2E_SCREENSHOT_PATH` captures only the synthetic evidence walkthrough after connecting.
+
+Run the Python checks against the same dedicated database, separately from browser tests:
+
+```sh
+TEST_DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55434/pmknowledge_test \
+  uv run pytest -q
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy apps/api/src
+```
+
+When finished, use the same Compose files/project with `down` to stop this slice;
+omit `--volumes` to preserve its data. See [Task 005 verification](docs/TASK_005.md)
+for recorded results and security limitations. The npm lock includes a scoped
+`minimatch` 11 override for the TypeScript lint parser to avoid a vulnerable
+transitive range; linting/build/test compatibility is verified with that override.
+
 ## API contracts
 
 | Method / path | Input | Result |
@@ -168,6 +271,7 @@ spend too long correlating logs during incidents.` It does not infer a new concl
 | `DELETE /api/v1/workspaces/{workspace_id}/members/{user_id}` | Owner token | `204`; unknown target/membership `404`; final-owner removal `409` |
 | `POST /api/v1/workspaces/{workspace_id}/sources` | Multipart `file`, `title`, optional `external_uri` | `201` ingestion receipt |
 | `POST /api/v1/workspaces/{workspace_id}/sources/{source_id}/versions` | Multipart `file` | `201` new version or `200` existing identical version |
+| `GET /api/v1/workspaces/{workspace_id}/sources/{source_id}/versions/{version_id}` | Member token; exact source/version IDs | `200` original text, provenance and computed freshness; historical versions allowed |
 | `GET /api/v1/workspaces/{workspace_id}/search` | Query `q`, optional `limit` (default 5, range 1–20), `mode` | `200 {results:[...]}` ranked excerpts |
 | `POST /api/v1/workspaces/{workspace_id}/ask` | JSON `{question, limit?, mode?}` | `200 {answer, status, sources}`; at most three quoted citations |
 | `POST /api/v1/workspaces/{workspace_id}/sources/{source_id}/versions/{version_id}/proposals` | Editor/owner token; specified latest version | `200 {proposals, created_count}` |

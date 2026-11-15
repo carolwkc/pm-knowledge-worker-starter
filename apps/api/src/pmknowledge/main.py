@@ -19,8 +19,9 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -35,7 +36,7 @@ from pmknowledge.decisions import (
     read_decisions,
     review_proposal,
 )
-from pmknowledge.documents import ingest
+from pmknowledge.documents import ingest, read_source_version
 from pmknowledge.embeddings import Embedder, EmbeddingUnavailable, LocalEmbedder
 from pmknowledge.models import User, Workspace, WorkspaceMembership
 from pmknowledge.retrieval import ask, search
@@ -57,6 +58,7 @@ from pmknowledge.schemas import (
     RetrievalMode,
     ReviewWrite,
     SearchRead,
+    SourceVersionRead,
     UserRead,
     WorkspaceCreate,
     WorkspaceList,
@@ -105,6 +107,11 @@ Configuration = Annotated[Settings, Depends(get_settings)]
 
 def create_app(settings: Settings | None = None, *, embedder: Embedder | None = None) -> FastAPI:
     settings = settings or Settings()
+    web_dir = settings.web_dist_dir
+    if web_dir is not None and (
+        not (web_dir / "index.html").is_file() or not (web_dir / "assets").is_dir()
+    ):
+        raise ValueError("WEB_DIST_DIR must contain a built index.html and assets directory")
     engine = create_engine(
         settings.database_url,
         pool_pre_ping=True,
@@ -137,6 +144,8 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         status = 500
         try:
             response = await call_next(request)
+            if request.url.path == "/api/v1" or request.url.path.startswith("/api/v1/"):
+                response.headers["Cache-Control"] = "no-store"
             status = response.status_code
             return response
         finally:
@@ -170,6 +179,16 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
     async def database_error(request: Request, exc: SQLAlchemyError) -> JSONResponse:
         logger.error(json.dumps({"event": "database_error", "type": type(exc).__name__}))
         return JSONResponse(status_code=503, content={"detail": "Database unavailable"})
+
+    @api.exception_handler(Exception)
+    async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
+        # ServerErrorMiddleware handles this outside the normal response middleware.
+        logger.error(json.dumps({"event": "unexpected_error", "type": type(exc).__name__}))
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error"},
+            headers={"Cache-Control": "no-store"},
+        )
 
     @api.exception_handler(EmbeddingUnavailable)
     async def embedding_error(request: Request, exc: EmbeddingUnavailable) -> JSONResponse:
@@ -328,6 +347,21 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             )
         )
 
+    @routes.get(
+        "/api/v1/workspaces/{workspace_id}/sources/{source_id}/versions/{version_id}",
+        response_model=SourceVersionRead,
+    )
+    def source_version(
+        workspace_id: UUID,
+        source_id: UUID,
+        version_id: UUID,
+        session: Database,
+        principal: Identity,
+    ) -> SourceVersionRead:
+        return read_source_version(
+            session, workspace_id, source_id, version_id, principal=principal
+        )
+
     @routes.post("/api/v1/workspaces/{workspace_id}/ask", response_model=AnswerRead)
     def ask_question(
         workspace_id: UUID,
@@ -437,6 +471,14 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         ]
 
     api.include_router(routes)
+    if web_dir is not None:
+        index = web_dir / "index.html"
+
+        @api.get("/", include_in_schema=False)
+        def web_index() -> FileResponse:
+            return FileResponse(index, headers={"Cache-Control": "no-cache"})
+
+        api.mount("/assets", StaticFiles(directory=web_dir / "assets"), name="web-assets")
     return api
 
 
