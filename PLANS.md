@@ -17,7 +17,9 @@ See the historical [Task 004 verification and limitations](docs/TASK_004.md).
   See [specification](tasks/005-web-qa.md) and [verification](docs/TASK_005.md).
 - Task 006: Source browser with title filtering and immutable version history.
   See [specification](tasks/006-source-browser.md) and [verification](docs/TASK_006.md).
-- Later tasks: decision browser/review queue, user feedback and upload UI.
+- Task 007: Decision browser, explicit proposal generation and owner review queue.
+  See [specification](tasks/007-decision-browser-review.md) and [verification](docs/TASK_007.md).
+- Later tasks: user feedback and upload UI.
 
 ## Milestone 3: Agent Harness
 

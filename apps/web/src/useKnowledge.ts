@@ -4,6 +4,9 @@ import {
   ApiError,
   type Answer,
   type Citation,
+  type Evidence,
+  type ProposalFilter,
+  type ReviewAction,
   type RetrievalMode,
   type SourceVersion,
   type SourceRef,
@@ -12,6 +15,13 @@ import {
   type User,
   type Workspace,
 } from './api';
+import {
+  emptyDecisions,
+  validComment,
+  verifiedRecord,
+  type KnowledgeRecord,
+  type WorkspaceView,
+} from './decisionState';
 
 interface Session {
   token: string;
@@ -19,7 +29,8 @@ interface Session {
 }
 export interface OpenSource {
   version: SourceVersion;
-  citation: Citation | null;
+  citation: Evidence | null;
+  context?: 'answer' | 'proposal' | 'decision';
 }
 
 export interface BrowserState {
@@ -62,15 +73,28 @@ export function useKnowledge() {
   const [mode, setMode] = useState<RetrievalMode>('keyword');
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [source, setSource] = useState<OpenSource | null>(null);
-  const [view, setView] = useState<'ask' | 'browse'>('ask');
+  const [view, setView] = useState<WorkspaceView>('ask');
+  const [decisions, setDecisions] = useState(emptyDecisions);
+  const [generated, setGenerated] = useState('');
   const [browser, setBrowser] = useState<BrowserState>(emptyBrowser);
-  const [busy, setBusy] = useState<'connect' | 'ask' | 'source' | 'catalogue' | 'history' | null>(
-    null,
-  );
+  const [busy, setBusy] = useState<
+    | 'connect'
+    | 'ask'
+    | 'source'
+    | 'catalogue'
+    | 'history'
+    | 'records'
+    | 'detail'
+    | 'generate'
+    | 'review'
+    | null
+  >(null);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState<(() => void) | null>(null);
   const pending = useRef<AbortController | null>(null);
   const generation = useRef(0);
+  const writing = useRef(false);
+  const role = workspaces.find((w) => w.id === workspaceId)?.role;
 
   useEffect(
     () => () => {
@@ -94,6 +118,8 @@ export function useKnowledge() {
   function clearEvidence() {
     setAnswer(null);
     setSource(null);
+    setDecisions(emptyDecisions());
+    setGenerated('');
   }
 
   function disconnect(message = '') {
@@ -147,24 +173,43 @@ export function useKnowledge() {
     setRetry(null);
     setBrowser(emptyBrowser());
     if (view === 'browse' && id) void loadCatalogue('', 0, id);
+    const next =
+      view === 'proposals' && workspaces.find((w) => w.id === id)?.role === 'reader'
+        ? 'decisions'
+        : view;
+    setView(next);
+    if ((next === 'decisions' || next === 'proposals') && id)
+      void loadRecords('pending', 0, false, next, id);
   }
 
-  function selectView(next: 'ask' | 'browse') {
+  function selectView(next: WorkspaceView) {
+    if (next === 'proposals' && role !== 'editor' && role !== 'owner') return;
     if (next === view) return;
     begin();
     setView(next);
     setSource(null);
     setBrowser(emptyBrowser());
+    setDecisions(emptyDecisions());
+    setGenerated('');
     setBusy(null);
     setError('');
     setRetry(null);
     if (next === 'browse') void loadCatalogue('', 0);
+    if (next === 'decisions' || next === 'proposals') void loadRecords('pending', 0, false, next);
   }
 
   async function handleFailure(
     failure: unknown,
     operation: ReturnType<typeof begin>,
-    context: 'ask' | 'catalogue' | 'history' | 'source' = 'ask',
+    context:
+      | 'ask'
+      | 'catalogue'
+      | 'history'
+      | 'source'
+      | 'records'
+      | 'detail'
+      | 'generate'
+      | 'review' = 'ask',
     scope = workspaceId,
   ): Promise<boolean> {
     if (!operation.current()) return false;
@@ -176,6 +221,10 @@ export function useKnowledge() {
               catalogue: 'the source catalogue',
               history: 'version history',
               source: 'source text',
+              records: 'the knowledge catalogue',
+              detail: 'the selected record and evidence',
+              generate: 'proposal generation results',
+              review: 'the review result',
             }[context]
           }. `;
     if (failure instanceof ApiError) {
@@ -196,6 +245,9 @@ export function useKnowledge() {
           setWorkspaceId(
             list.workspaces.some((w) => w.id === scope) ? scope : (list.workspaces[0]?.id ?? ''),
           );
+          const selected = list.workspaces.find((w) => w.id === scope) ?? list.workspaces[0];
+          if (view === 'proposals' && selected?.role !== 'editor' && selected?.role !== 'owner')
+            setView('decisions');
           setError(
             'Workspace or source is no longer accessible. Workspace access has been refreshed.',
           );
@@ -219,7 +271,9 @@ export function useKnowledge() {
               ? 'Check your question. Use 1–1,000 characters without NUL characters.'
               : context === 'catalogue'
                 ? 'Check the title filter. Use at most 200 characters without NUL characters.'
-                : 'The source request was invalid. Refresh the catalogue and try again.'),
+                : context === 'review'
+                  ? 'Check the review comment. Use at most 1,000 characters without NUL characters.'
+                  : 'The source request was invalid. Refresh the catalogue and try again.'),
         );
         return true;
       }
@@ -283,7 +337,7 @@ export function useKnowledge() {
         setError('The source response did not match this citation. Try again.');
         return;
       }
-      setSource({ version, citation });
+      setSource({ version, citation, context: 'answer' });
     } catch (failure) {
       if (await handleFailure(failure, operation, 'source'))
         setRetry(() => () => void openSource(citation));
@@ -297,6 +351,7 @@ export function useKnowledge() {
     const operation = begin();
     const applied = title.trim();
     setSource(null);
+    setGenerated('');
     setBrowser({ ...emptyBrowser(), title: applied, filterDraft: applied, offset });
     setBusy('catalogue');
     setError('');
@@ -335,6 +390,7 @@ export function useKnowledge() {
   async function loadHistory(selected: SourceSummary, offset = 0, openLatest = false) {
     if (!session || !workspaceId || selected.workspace_id !== workspaceId) return;
     const operation = begin();
+    setGenerated('');
     let context: 'history' | 'source' = 'history';
     if (openLatest) setSource(null);
     setBrowser((b) => ({
@@ -385,6 +441,7 @@ export function useKnowledge() {
   async function openVersion(ref: SourceRef) {
     if (!session || !workspaceId) return;
     const operation = begin();
+    setGenerated('');
     setSource(null);
     setBusy('source');
     setError('');
@@ -395,6 +452,285 @@ export function useKnowledge() {
       if (await handleFailure(failure, operation, 'source'))
         setRetry(() => () => void openVersion(ref));
     } finally {
+      if (operation.current()) setBusy(null);
+    }
+  }
+
+  async function fetchRecords(
+    next: 'decisions' | 'proposals',
+    status: ProposalFilter,
+    offset: number,
+    operation: ReturnType<typeof begin>,
+    scope: string,
+    backtrack = false,
+  ) {
+    if (!session) return;
+    let page = offset;
+    let records: KnowledgeRecord[];
+    do {
+      const result =
+        next === 'decisions'
+          ? (await api.decisions(session.token, scope, page, operation.signal)).decisions
+          : (await api.proposals(session.token, scope, status, page, operation.signal)).proposals;
+      if (!operation.current()) return;
+      if (result.some((r) => r.workspace_id !== scope)) throw new SourceMismatch();
+      records = result;
+      if (!backtrack || records.length || page === 0) break;
+      page = Math.max(0, page - 20);
+    } while (operation.current());
+    if (operation.current())
+      setDecisions((d) => ({
+        ...d,
+        records: records.slice(0, 20),
+        offset: page,
+        hasMore: records.length > 20,
+        loaded: true,
+      }));
+  }
+
+  async function loadRecords(
+    status: ProposalFilter = decisions.status,
+    offset = 0,
+    preserve = false,
+    next: 'decisions' | 'proposals' = view === 'proposals' ? 'proposals' : 'decisions',
+    scope = workspaceId,
+  ) {
+    if (!session || !scope) return;
+    const operation = begin();
+    if (!preserve) {
+      setSource(null);
+      setDecisions({ ...emptyDecisions(), status, offset });
+    } else setDecisions((d) => ({ ...d, records: [], loaded: false }));
+    setBusy('records');
+    setError('');
+    setRetry(null);
+    try {
+      await fetchRecords(next, status, offset, operation, scope, preserve);
+    } catch (failure) {
+      if (await handleFailure(failure, operation, 'records', scope))
+        setRetry(() => () => void loadRecords(status, offset, preserve, next, scope));
+    } finally {
+      if (operation.current()) setBusy(null);
+    }
+  }
+
+  async function fetchRecord(
+    id: string,
+    next: 'decisions' | 'proposals',
+    operation: ReturnType<typeof begin>,
+  ) {
+    if (!session) return;
+    const record =
+      next === 'decisions'
+        ? await api.decision(session.token, workspaceId, id, operation.signal)
+        : await api.proposal(session.token, workspaceId, id, operation.signal);
+    if (!operation.current()) return;
+    if (record.workspace_id !== workspaceId || record.id !== id) throw new SourceMismatch();
+    setDecisions((d) => ({ ...d, selected: record }));
+    const version = await api.source(session.token, workspaceId, record.evidence, operation.signal);
+    if (!operation.current()) return;
+    if (
+      version.workspace_id !== workspaceId ||
+      version.source_document_id !== record.evidence.source_document_id ||
+      version.document_version_id !== record.evidence.document_version_id
+    )
+      throw new SourceMismatch();
+    setSource({
+      version,
+      citation: record.evidence,
+      context: next === 'decisions' ? 'decision' : 'proposal',
+    });
+    setDecisions((d) => ({ ...d, unresolved: false }));
+  }
+
+  async function openRecord(
+    id: string,
+    next: 'decisions' | 'proposals' = view === 'proposals' ? 'proposals' : 'decisions',
+    refill = false,
+  ) {
+    if (!session || !workspaceId) return;
+    const operation = begin();
+    setView(next);
+    setSource(null);
+    setBusy('detail');
+    setError('');
+    setRetry(null);
+    setDecisions((d) => ({
+      ...(next === view ? d : emptyDecisions()),
+      selected: null,
+      comment: '',
+      confirmation: null,
+      notice: '',
+      unresolved: true,
+    }));
+    try {
+      if (next !== view) await fetchRecords(next, 'pending', 0, operation, workspaceId);
+      if (operation.current()) await fetchRecord(id, next, operation);
+      if (refill && operation.current()) await refillReviewQueue(operation);
+    } catch (failure) {
+      if (await handleFailure(failure, operation, 'detail'))
+        setRetry(() => () => void openRecord(id, next, refill));
+    } finally {
+      if (operation.current()) setBusy(null);
+    }
+  }
+
+  const selectedProposal =
+    decisions.selected && 'status' in decisions.selected ? decisions.selected : null;
+  const canReview =
+    role === 'owner' && selectedProposal?.status === 'pending' && !decisions.unresolved;
+  const canApprove =
+    !!canReview &&
+    !!selectedProposal &&
+    verifiedRecord(selectedProposal, source?.version) &&
+    source?.version.source_is_latest === true;
+
+  function prepareReview(action: ReviewAction) {
+    if (
+      !canReview ||
+      (action === 'approve' && !canApprove) ||
+      busy ||
+      !validComment(decisions.comment)
+    )
+      return;
+    setDecisions((d) => ({ ...d, confirmation: action }));
+  }
+
+  async function refillReviewQueue(operation: ReturnType<typeof begin>) {
+    try {
+      await fetchRecords(
+        'proposals',
+        decisions.status,
+        decisions.offset,
+        operation,
+        workspaceId,
+        true,
+      );
+    } catch (failure) {
+      if (await handleFailure(failure, operation, 'records'))
+        setRetry(
+          () => () => void loadRecords(decisions.status, decisions.offset, true, 'proposals'),
+        );
+    }
+  }
+
+  async function submitReview() {
+    const action = decisions.confirmation;
+    if (
+      !session ||
+      !selectedProposal ||
+      !action ||
+      !canReview ||
+      writing.current ||
+      busy ||
+      (action === 'approve' && !canApprove) ||
+      !validComment(decisions.comment)
+    )
+      return;
+    const operation = begin();
+    writing.current = true;
+    setBusy('review');
+    setError('');
+    setRetry(null);
+    setDecisions((d) => ({ ...d, confirmation: null, notice: '' }));
+    try {
+      const comment = decisions.comment.trim();
+      const result = await api.review(
+        session.token,
+        workspaceId,
+        selectedProposal.id,
+        { action, ...(comment ? { comment } : {}) },
+        operation.signal,
+      );
+      if (!operation.current()) return;
+      if (result.workspace_id !== workspaceId || result.id !== selectedProposal.id)
+        throw new SourceMismatch();
+      setDecisions((d) => ({
+        ...d,
+        selected: result,
+        comment: '',
+        notice: `Review recorded: ${result.status}.`,
+      }));
+      await refillReviewQueue(operation);
+    } catch (failure) {
+      if (!operation.current()) return;
+      if (failure instanceof ApiError && [401, 403, 404, 422].includes(failure.status)) {
+        await handleFailure(failure, operation, 'review');
+      } else {
+        const conflict = failure instanceof ApiError && failure.status === 409;
+        setSource(null);
+        setDecisions((d) => ({
+          ...d,
+          unresolved: true,
+          comment: '',
+          confirmation: null,
+          notice: conflict
+            ? 'Review conflict. Reloading the proposal and its evidence.'
+            : 'Review outcome uncertain. Reloading the recorded proposal before any further review.',
+        }));
+        try {
+          await fetchRecord(selectedProposal.id, 'proposals', operation);
+          if (operation.current()) await refillReviewQueue(operation);
+        } catch (readFailure) {
+          if (await handleFailure(readFailure, operation, 'detail'))
+            setRetry(() => () => void openRecord(selectedProposal.id, 'proposals', true));
+        }
+      }
+    } finally {
+      writing.current = false;
+      if (operation.current()) setBusy(null);
+    }
+  }
+
+  async function generate() {
+    if (
+      !session ||
+      !source ||
+      view !== 'browse' ||
+      role === 'reader' ||
+      !role ||
+      !source.version.source_is_latest ||
+      busy ||
+      writing.current
+    )
+      return;
+    const operation = begin();
+    writing.current = true;
+    const ref = source.version;
+    setBusy('generate');
+    setError('');
+    setRetry(null);
+    setGenerated('');
+    try {
+      const result = await api.generate(session.token, workspaceId, ref, operation.signal);
+      if (!operation.current()) return;
+      if (
+        result.proposals.some(
+          (p) =>
+            p.workspace_id !== workspaceId ||
+            p.evidence.source_document_id !== ref.source_document_id ||
+            p.evidence.document_version_id !== ref.document_version_id,
+        )
+      )
+        throw new SourceMismatch();
+      const count = result.proposals.length;
+      setGenerated(
+        !count
+          ? 'No decision proposals matched this source.'
+          : `Created ${result.created_count} new ${result.created_count === 1 ? 'proposal' : 'proposals'}; ${count} ${count === 1 ? 'proposal' : 'proposals'} returned.${result.created_count === 0 ? ' Existing proposals and review history were preserved.' : ''}`,
+      );
+    } catch (failure) {
+      if (!operation.current()) return;
+      if (failure instanceof ApiError && failure.status === 409) {
+        setSource({ ...source, version: { ...source.version, source_is_latest: false } });
+        setError(
+          'This source has a newer version. Refresh the catalogue and open its latest version to generate proposals.',
+        );
+        setRetry(() => () => void loadCatalogue(browser.title, 0));
+      } else if (await handleFailure(failure, operation, 'generate'))
+        setRetry(() => () => void generate());
+    } finally {
+      writing.current = false;
       if (operation.current()) setBusy(null);
     }
   }
@@ -424,5 +760,17 @@ export function useKnowledge() {
     loadHistory,
     openVersion,
     retry,
+    decisions,
+    generated,
+    loadRecords,
+    openRecord,
+    generate,
+    canReview,
+    canApprove,
+    prepareReview,
+    submitReview,
+    setReviewComment: (comment: string) =>
+      setDecisions((d) => ({ ...d, comment, confirmation: null })),
+    cancelReview: () => setDecisions((d) => ({ ...d, confirmation: null })),
   };
 }

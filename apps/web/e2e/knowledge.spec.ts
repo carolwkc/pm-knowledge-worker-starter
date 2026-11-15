@@ -5,9 +5,23 @@ import { expect, test as base } from '@playwright/test';
 interface Seed {
   ownerToken: string;
   readerToken: string;
+  editorToken: string;
   readerTokenId: string;
   workspaces: string[];
   users: string[];
+}
+
+async function connectBrowser(
+  page: import('@playwright/test').Page,
+  token: string,
+  workspace: string,
+) {
+  await page.goto('/');
+  await page.getByLabel('API token').fill(token);
+  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  await expect(page.getByLabel('Workspace', { exact: true })).toBeVisible();
+  await page.getByLabel('Workspace', { exact: true }).selectOption(workspace);
+  await expect(page.getByLabel('Workspace', { exact: true })).toHaveValue(workspace);
 }
 function provision(payload: object) {
   const result = spawnSync('uv', ['run', 'python', 'apps/web/e2e/fixtures.py'], {
@@ -33,6 +47,189 @@ const test = base.extend<{ seed: Seed }>({
       provision({ action: 'cleanup', users: seed.users, workspaces: seed.workspaces });
     }
   },
+});
+
+test('editor generates, owner confirms review with a concurrent source update, reader verifies historical decision', async ({
+  page,
+  request,
+  seed,
+}) => {
+  const workspace = seed.workspaces[0];
+  const root = `/api/v1/workspaces/${workspace}`;
+  const first = 'Decision: ship café diagnostics.\r\nPreserve evidence.';
+  const second = 'We decided to defer alerting.';
+  const original = `👋 Synthetic Task007 notes.\r\n\r\n${first}\r\n\r\n${second}`;
+  const headers = { Authorization: `Bearer ${seed.ownerToken}` };
+  const uploaded = await request.post(`${root}/sources`, {
+    headers,
+    multipart: {
+      title: 'Synthetic Task007 decision notes',
+      external_uri: 'javascript:inert-decision-metadata',
+      file: { name: 'decisions.txt', mimeType: 'text/plain', buffer: Buffer.from(original) },
+    },
+  });
+  expect(uploaded.status()).toBe(201);
+  const receipt = await uploaded.json();
+  await connectBrowser(page, seed.editorToken, workspace);
+  await page.getByRole('button', { name: 'Browse sources', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Open Synthetic Task007 decision notes', exact: true })
+    .click();
+  await expect(page.getByTestId('source-text')).toHaveText(original);
+  await page.getByRole('button', { name: 'Generate proposals', exact: true }).click();
+  await expect(
+    page.getByText('Created 2 new proposals; 2 proposals returned.', { exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Generate proposals', exact: true }).click();
+  await expect(
+    page.getByText(/Existing proposals and review history were preserved/),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Open review queue', exact: true }).click();
+  const generated = await (await request.get(`${root}/proposals`, { headers })).json();
+  const proposalA = generated.proposals.find((p: { statement: string }) => p.statement === first);
+  const proposalB = generated.proposals.find((p: { statement: string }) => p.statement === second);
+  await page.getByRole('button', { name: `Open proposal ${proposalA.id}`, exact: true }).click();
+  await expect(page.getByTestId('source-text')).toHaveText(original);
+  await expect(page.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
+
+  await connectBrowser(page, seed.ownerToken, workspace);
+  await page.getByRole('button', { name: 'Review queue', exact: true }).click();
+  await page.getByRole('button', { name: `Open proposal ${proposalA.id}`, exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeEnabled();
+  await page.getByLabel('Review comment', { exact: true }).fill('Synthetic human review.');
+  await page.getByRole('button', { name: 'Approve', exact: true }).click();
+  expect((await (await request.get(`${root}/decisions`, { headers })).json()).decisions).toEqual(
+    [],
+  );
+  await page.getByRole('button', { name: 'Confirm approve', exact: true }).click();
+  await expect(page.getByText('Review recorded: approved.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: `Open proposal ${proposalB.id}`, exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeEnabled();
+  expect(
+    (
+      await request.post(`${root}/sources/${receipt.source_document_id}/versions`, {
+        headers,
+        multipart: {
+          file: {
+            name: 'updated.txt',
+            mimeType: 'text/plain',
+            buffer: Buffer.from('Decision: a newer synthetic strategy.'),
+          },
+        },
+      })
+    ).status(),
+  ).toBe(201);
+  await page.getByRole('button', { name: 'Approve', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm approve', exact: true }).click();
+  await expect(page.getByText(/Review conflict/)).toBeVisible();
+  await expect(page.getByText('Historical version', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Reject', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm reject', exact: true }).click();
+  await expect(page.getByText('Review recorded: rejected.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await connectBrowser(page, seed.readerToken, workspace);
+  await page.getByRole('button', { name: 'Decisions', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Review queue', exact: true })).toHaveCount(0);
+  const decisions = await (await request.get(`${root}/decisions`, { headers })).json();
+  expect(decisions.decisions).toHaveLength(1);
+  await page
+    .getByRole('button', { name: `Open decision ${decisions.decisions[0].id}`, exact: true })
+    .focus();
+  await page.keyboard.press('Enter');
+  await expect(
+    page.getByRole('heading', { name: 'Synthetic Task007 decision notes', exact: true }),
+  ).toBeFocused();
+  expect(await page.getByTestId('source-text').textContent()).toBe(original);
+  expect(await page.locator('mark').textContent()).toBe(first);
+  await expect(page.getByText('Historical version', { exact: true })).toBeVisible();
+  await page.getByText('Source details', { exact: true }).click();
+  await expect(page.getByText('javascript:inert-decision-metadata', { exact: true })).toBeVisible();
+  await expect(page.locator('a[href^="javascript:"]')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  expect(await page.evaluate(() => [localStorage.length, sessionStorage.length])).toEqual([0, 0]);
+  expect(
+    (
+      await request.get(`${root}/proposals`, {
+        headers: { Authorization: `Bearer ${seed.readerToken}` },
+      })
+    ).status(),
+  ).toBe(403);
+  expect(
+    (
+      await request.get(
+        `/api/v1/workspaces/${seed.workspaces[1]}/decisions/${decisions.decisions[0].id}`,
+        { headers },
+      )
+    ).status(),
+  ).toBe(404);
+  if (process.env.E2E_DECISION_SCREENSHOT_PATH)
+    await page.screenshot({ path: process.env.E2E_DECISION_SCREENSHOT_PATH, fullPage: true });
+  provision({ action: 'revoke', tokenId: seed.readerTokenId });
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(page.getByLabel('API token')).toHaveValue('');
+  await expect(page.getByTestId('source-text')).toHaveCount(0);
+});
+
+test('owner demotion clears the review draft and removes authoritative controls', async ({
+  page,
+  request,
+  seed,
+}) => {
+  const root = `/api/v1/workspaces/${seed.workspaces[0]}`;
+  const headers = { Authorization: `Bearer ${seed.ownerToken}` };
+  const receipt = await (
+    await request.post(`${root}/sources`, {
+      headers,
+      multipart: {
+        title: 'Synthetic demotion evidence',
+        file: {
+          name: 'decision.txt',
+          mimeType: 'text/plain',
+          buffer: Buffer.from('Decision: test membership changes.'),
+        },
+      },
+    })
+  ).json();
+  const generated = await (
+    await request.post(
+      `${root}/sources/${receipt.source_document_id}/versions/${receipt.document_version_id}/proposals`,
+      { headers },
+    )
+  ).json();
+  await connectBrowser(page, seed.ownerToken, seed.workspaces[0]);
+  await page.getByRole('button', { name: 'Review queue', exact: true }).click();
+  await page
+    .getByRole('button', { name: `Open proposal ${generated.proposals[0].id}`, exact: true })
+    .click();
+  await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeEnabled();
+  await page.getByLabel('Review comment', { exact: true }).fill('Synthetic private review draft.');
+  expect(
+    (
+      await request.put(`${root}/members/${seed.users[2]}`, { headers, data: { role: 'owner' } })
+    ).status(),
+  ).toBe(200);
+  expect(
+    (
+      await request.put(`${root}/members/${seed.users[0]}`, { headers, data: { role: 'reader' } })
+    ).status(),
+  ).toBe(200);
+  await page.getByRole('button', { name: 'Approve', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm approve', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Approved decisions', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Review queue', exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Review comment', { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('source-text')).toHaveCount(0);
+  expect((await (await request.get(`${root}/decisions`, { headers })).json()).decisions).toEqual(
+    [],
+  );
 });
 
 test('reader asks, verifies pinned evidence after an update, and cannot read a foreign workspace', async ({

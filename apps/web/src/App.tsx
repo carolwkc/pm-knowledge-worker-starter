@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { RetrievalMode } from './api';
 import { SourcePanel } from './SourcePanel';
 import { SourceBrowser } from './SourceBrowser';
+import { DecisionBrowser } from './DecisionBrowser';
 import { useKnowledge } from './useKnowledge';
 
 export default function App() {
@@ -19,7 +20,15 @@ export default function App() {
             ? 'Loading source catalogue…'
             : desk.busy === 'history'
               ? 'Loading version history…'
-              : '';
+              : desk.busy === 'records'
+                ? 'Loading knowledge records…'
+                : desk.busy === 'detail'
+                  ? 'Opening the record and its evidence…'
+                  : desk.busy === 'generate'
+                    ? 'Generating source quotations…'
+                    : desk.busy === 'review'
+                      ? 'Recording your review…'
+                      : '';
 
   return (
     <div className="app-shell">
@@ -129,6 +138,22 @@ export default function App() {
                 >
                   Browse sources
                 </button>
+                <button
+                  className="quiet-button"
+                  aria-pressed={desk.view === 'decisions'}
+                  onClick={() => desk.selectView('decisions')}
+                >
+                  Decisions
+                </button>
+                {selected && selected.role !== 'reader' && (
+                  <button
+                    className="quiet-button"
+                    aria-pressed={desk.view === 'proposals'}
+                    onClick={() => desk.selectView('proposals')}
+                  >
+                    Review queue
+                  </button>
+                )}
               </nav>
             )}
             {!desk.workspaces.length ? (
@@ -140,7 +165,9 @@ export default function App() {
               </section>
             ) : (
               <div className="desk-layout">
-                {desk.view === 'browse' ? (
+                {desk.view === 'decisions' || desk.view === 'proposals' ? (
+                  <DecisionBrowser desk={desk} />
+                ) : desk.view === 'browse' ? (
                   <SourceBrowser
                     key={desk.workspaceId}
                     browser={desk.browser}
@@ -254,11 +281,50 @@ export default function App() {
                     )}
                   </section>
                 )}
-                <SourcePanel
-                  source={desk.source}
-                  loading={desk.busy === 'source' || desk.busy === 'history'}
-                  browsing={desk.view === 'browse'}
-                />
+                <div>
+                  <SourcePanel
+                    source={desk.source}
+                    loading={
+                      desk.busy === 'source' || desk.busy === 'history' || desk.busy === 'detail'
+                    }
+                    browsing={desk.view === 'browse'}
+                    context={
+                      desk.view === 'proposals'
+                        ? 'proposal'
+                        : desk.view === 'decisions'
+                          ? 'decision'
+                          : undefined
+                    }
+                  />
+                  {desk.view === 'browse' && desk.source && selected?.role !== 'reader' && (
+                    <section className="generation-panel" aria-label="Proposal generation">
+                      <p>
+                        Generate decision proposals as exact source quotations. Nothing is approved
+                        automatically.
+                      </p>
+                      <button
+                        disabled={desk.busy !== null || !desk.source.version.source_is_latest}
+                        onClick={() => void desk.generate()}
+                      >
+                        Generate proposals
+                      </button>
+                      {!desk.source.version.source_is_latest && (
+                        <p className="notice">Open the latest version to generate proposals.</p>
+                      )}
+                      {desk.generated && (
+                        <>
+                          <p role="status">{desk.generated}</p>
+                          <button
+                            className="quiet-button"
+                            onClick={() => desk.selectView('proposals')}
+                          >
+                            Open review queue
+                          </button>
+                        </>
+                      )}
+                    </section>
+                  )}
+                </div>
               </div>
             )}
           </>

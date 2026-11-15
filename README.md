@@ -1,10 +1,11 @@
 # PM Knowledge Worker
 
 An evidence-first product knowledge API for product managers, designers, and tech leads.
-Tasks 001–006 provide Markdown/text ingestion, immutable provenance, authenticated
+Tasks 001–007 provide Markdown/text ingestion, immutable provenance, authenticated
 workspace access, keyword/semantic/hybrid search, deterministic quoted answers,
 explicitly reviewed decision quotations, web Q&A with source navigation, and a
-source catalogue with title filtering and version history.
+source catalogue with title filtering and version history, and browser-based
+decision proposal generation, owner review and approved decision browsing.
 All supplied content is synthetic. Local CPU embeddings are opt-in; keyword mode
 remains the default.
 
@@ -212,6 +213,50 @@ Uploads and source updates remain existing API operations. No document text is
 included in catalogue/history responses; only exact-version reads return full text.
 See [Task 006 verification and limitations](docs/TASK_006.md).
 
+## Task 007: generate, review and browse decisions
+
+Editors and owners can open a latest version in **Browse sources**, then choose
+**Generate proposals**. Generation uses the existing deterministic decision-marker
+rule, quotes original chunks, reports created/returned counts and never publishes
+automatically. Repeating it preserves proposal IDs and review history. No matches
+is a valid result. Historical versions cannot generate; if a newer version arrives
+while generating, the current text stays pinned and **Retry** refreshes the catalogue.
+
+Choose **Open review queue** or **Review queue** to inspect proposals. Editors and
+owners can filter Pending (default), Approved, Rejected or All. Owners, including
+the original proposer, can choose **Approve** or **Reject**, add an optional comment,
+then confirm or cancel. Approval publishes the exact quotation to workspace members;
+it records human judgment rather than proving factual truth. No request is sent
+before confirmation. Editing the comment cancels the prepared confirmation.
+
+Approval requires verified matching evidence from a latest source version. Stale
+pending proposals can still be rejected. Comments are trimmed; blank comments are
+omitted. The limit is 1,000 Unicode characters and NUL is forbidden. After a conflict
+or uncertain review response, the UI reloads the proposal and its pinned evidence;
+it never automatically repeats a review write. A pending proposal requires a new
+confirmation. Terminal records show the actual recorded reviewer/comment/time and
+cannot be edited or reopened. A saved review remains visible if catalogue refresh
+fails; **Retry** repeats only that read.
+
+All members can choose **Decisions**, select an approved quotation and inspect its
+exact original text. Historical evidence remains pinned after source updates.
+Actor attribution uses stable user UUIDs; there is no user-name lookup API. Lists
+show 20 items with Previous/Next; Refresh retains the queue filter and returns to
+page one. Freshness and offset pagination are snapshots, with no polling or frozen
+pagination across concurrent changes.
+
+Navigation clears details, comments and confirmations. Completed Q&A remains in the
+same workspace; workspace changes, disconnect and detected access loss clear
+protected data. Role changes refresh available controls. Requests are aborted and
+late responses ignored, but a server write may still commit after navigation;
+Refresh discovers the recorded result on return. Tokens and review drafts remain
+only in tab memory. Source text, review comments and URI metadata remain inert.
+
+This task adds no HTTP endpoints, migrations, dependencies, model calls or external
+writes. Uploads and membership administration remain API/CLI operations. See
+[Task 007 specification](tasks/007-decision-browser-review.md) and
+[verification and limitations](docs/TASK_007.md).
+
 ### Web development and host serving
 
 Use Node 24+ and npm; Node 22.13+ on the 22.x line is also supported.
@@ -254,12 +299,12 @@ npm --prefix apps/web exec -- playwright install chromium
 For real-browser integration, use a dedicated Compose project and unused ports:
 
 ```sh
-POSTGRES_PASSWORD=localdev POSTGRES_PORT=55436 API_PORT=58006 EMBEDDINGS_ENABLED=false \
-  docker compose -p canberra-task006 -f compose.yaml \
+POSTGRES_PASSWORD=localdev POSTGRES_PORT=55437 API_PORT=58007 EMBEDDINGS_ENABLED=false \
+  docker compose -p ashgabat-task007 -f compose.yaml \
   -f apps/web/e2e/compose.yaml up -d --build --wait
 
-E2E_DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55436/pmknowledge_test \
-E2E_BASE_URL=http://127.0.0.1:58006 \
+E2E_DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55437/pmknowledge_test \
+E2E_BASE_URL=http://127.0.0.1:58007 \
   npm --prefix apps/web run test:e2e
 ```
 
@@ -271,12 +316,13 @@ Browser tests expect embeddings to be disabled. Traces, videos and automatic
 screenshots are disabled to avoid recording credentials/source content. An optional
 `E2E_SCREENSHOT_PATH` captures only the synthetic evidence walkthrough after connecting.
 `E2E_SOURCE_BROWSER_SCREENSHOT_PATH` similarly captures the synthetic source-browser
+walkthrough. `E2E_DECISION_SCREENSHOT_PATH` captures the synthetic decision evidence
 walkthrough. Save screenshots under `.context/`.
 
 Run the Python checks against the same dedicated database, separately from browser tests:
 
 ```sh
-TEST_DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55436/pmknowledge_test \
+TEST_DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55437/pmknowledge_test \
   uv run pytest -q
 uv run ruff check .
 uv run ruff format --check .
