@@ -109,6 +109,26 @@ requires identity and workspace access and scopes its data joins to that workspa
 Search/ask remain independent of this derived review layer. No external model, frontend,
 automatic promotion, source mutation or external write is introduced.
 
+### Task 005 web experience
+
+React/TypeScript assets are built with Vite in a separate Node Docker stage and
+served at `/` and `/assets` by the existing FastAPI process. `WEB_DIST_DIR` is
+optional for API-only host operation; configured invalid builds fail at startup.
+Development uses Vite's local `/api` proxy, without broad CORS or a catch-all route.
+
+The browser validates an operator-issued token, lists joined workspaces and asks
+through the existing retrieval API. Tokens and current question/evidence remain
+only in memory. Scope/session changes abort work and invalidate response generations
+so delayed successes or failures cannot restore old data. Access errors clear
+evidence and refresh workspace discovery; credential errors clear the session.
+
+A reader-authorised source/version read joins through the requested workspace and
+membership before returning original text and computed freshness in one query.
+Historical versions remain accessible. The source viewer validates version identity
+and exact Unicode code-point spans, preserving CRLF before slicing; only verified
+quotes receive a highlight. All document/answer/URI content remains inert text.
+Authenticated API responses, including failures, use no-store cache headers.
+
 ## Ingestion flow
 
 Authenticate user → verify editor/owner membership → validate file & workspace scope → save source metadata → parse text → hash/deduplicate → create version and chunks → index → return source/version identifiers.

@@ -11,5 +11,7 @@ node_modules/
 .next/
 dist/
 build/
+test-results/
+playwright-report/
 *.pyc
 .DS_Store

@@ -1,0 +1,6 @@
+# Merge with the repository Compose file under a dedicated project name.
+# Use the disposable test database for browser provisioning and cleanup.
+services:
+  api:
+    environment:
+      DATABASE_URL: postgresql+psycopg://pmknowledge@db:5432/pmknowledge_test

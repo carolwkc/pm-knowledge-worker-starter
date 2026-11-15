@@ -74,6 +74,19 @@ class IngestRead(BaseModel):
     duplicate: bool
 
 
+class SourceVersionRead(BaseModel):
+    workspace_id: UUID
+    source_document_id: UUID
+    document_version_id: UUID
+    title: str
+    external_uri: str | None
+    version_number: int
+    sha256: str
+    ingested_at: datetime
+    plain_text: str
+    source_is_latest: bool
+
+
 class Evidence(BaseModel):
     source_document_id: UUID
     document_version_id: UUID

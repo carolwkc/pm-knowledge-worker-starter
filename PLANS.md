@@ -7,13 +7,15 @@
 - Task 003: Implement authenticated workspace access and verified permission filters.
 - Task 004: Add knowledge extraction proposals and reviewer approval flow.
 
-Tasks 001–003 are merged (PRs #1, #2 and #3). Task 004 is implemented for review;
-see [verification and limitations](docs/TASK_004.md).
-Review Task 004 before beginning the next milestone.
+Tasks 001–004 are merged (PRs #1, #2, #3 and #4).
+See the historical [Task 004 verification and limitations](docs/TASK_004.md).
 
 ## Milestone 2: Team Knowledge Experience
 
-- Frontend Q&A, knowledge browser, decision review queue, user feedback, source navigation.
+- Task 005: Web Q&A with verifiable source evidence — React/TypeScript UI,
+  authenticated workspace selection and immutable source-version navigation.
+  See [specification](tasks/005-web-qa.md) and [verification](docs/TASK_005.md).
+- Later tasks: knowledge browser, decision review queue, user feedback and upload UI.
 
 ## Milestone 3: Agent Harness
 
