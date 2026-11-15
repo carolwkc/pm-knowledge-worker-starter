@@ -39,6 +39,29 @@ export interface SourceVersion {
   plain_text: string;
   source_is_latest: boolean;
 }
+export interface SourceRef {
+  source_document_id: string;
+  document_version_id: string;
+}
+export interface SourceSummary {
+  workspace_id: string;
+  source_document_id: string;
+  title: string;
+  external_uri: string | null;
+  created_at: string;
+  latest_version_id: string;
+  latest_version_number: number;
+  latest_ingested_at: string;
+}
+export type SourceVersionSummary = Omit<SourceVersion, 'title' | 'external_uri' | 'plain_text'>;
+export interface SourceList {
+  sources: SourceSummary[];
+  has_more: boolean;
+}
+export interface SourceVersionList {
+  versions: SourceVersionSummary[];
+  has_more: boolean;
+}
 
 export class ApiError extends Error {
   constructor(public status: number) {
@@ -80,9 +103,27 @@ export const api = {
     mode: RetrievalMode,
     signal: AbortSignal,
   ) => request<Answer>(`${workspacePath(workspace)}/ask`, token, signal, { question, mode }),
-  source: (token: string, workspace: string, citation: Citation, signal: AbortSignal) =>
+  sources: (token: string, workspace: string, title: string, offset: number, signal: AbortSignal) =>
+    request<SourceList>(
+      `${workspacePath(workspace)}/sources?${new URLSearchParams({ title, offset: String(offset), limit: '20' })}`,
+      token,
+      signal,
+    ),
+  versions: (
+    token: string,
+    workspace: string,
+    sourceId: string,
+    offset: number,
+    signal: AbortSignal,
+  ) =>
+    request<SourceVersionList>(
+      `${workspacePath(workspace)}/sources/${encodeURIComponent(sourceId)}/versions?${new URLSearchParams({ offset: String(offset), limit: '20' })}`,
+      token,
+      signal,
+    ),
+  source: (token: string, workspace: string, source: SourceRef, signal: AbortSignal) =>
     request<SourceVersion>(
-      `${workspacePath(workspace)}/sources/${encodeURIComponent(citation.source_document_id)}/versions/${encodeURIComponent(citation.document_version_id)}`,
+      `${workspacePath(workspace)}/sources/${encodeURIComponent(source.source_document_id)}/versions/${encodeURIComponent(source.document_version_id)}`,
       token,
       signal,
     ),

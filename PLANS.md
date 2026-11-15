@@ -15,7 +15,9 @@ See the historical [Task 004 verification and limitations](docs/TASK_004.md).
 - Task 005: Web Q&A with verifiable source evidence — React/TypeScript UI,
   authenticated workspace selection and immutable source-version navigation.
   See [specification](tasks/005-web-qa.md) and [verification](docs/TASK_005.md).
-- Later tasks: knowledge browser, decision review queue, user feedback and upload UI.
+- Task 006: Source browser with title filtering and immutable version history.
+  See [specification](tasks/006-source-browser.md) and [verification](docs/TASK_006.md).
+- Later tasks: decision browser/review queue, user feedback and upload UI.
 
 ## Milestone 3: Agent Harness
 

@@ -1,9 +1,10 @@
 # PM Knowledge Worker
 
 An evidence-first product knowledge API for product managers, designers, and tech leads.
-Tasks 001–005 provide Markdown/text ingestion, immutable provenance, authenticated
+Tasks 001–006 provide Markdown/text ingestion, immutable provenance, authenticated
 workspace access, keyword/semantic/hybrid search, deterministic quoted answers,
-explicitly reviewed decision quotations, and web Q&A with source navigation.
+explicitly reviewed decision quotations, web Q&A with source navigation, and a
+source catalogue with title filtering and version history.
 All supplied content is synthetic. Local CPU embeddings are opt-in; keyword mode
 remains the default.
 
@@ -183,6 +184,34 @@ the UI reports that mode's failure and lets you select keyword; it never switche
 silently. No external model is called. The local deployment is loopback-only; this
 slice does not provide production SSO, TLS termination or a full identity lifecycle.
 
+## Task 006: browse original sources and version history
+
+Connect with an existing token, select a workspace, then choose **Browse sources**.
+Readers, editors and owners see the same workspace-wide source catalogue. Each row
+shows its title, latest version number and ingestion timestamp. Select a document
+to open its newest version and version history, then select an older version to
+inspect its original text. History pagination leaves the displayed version in place.
+Direct browsing has no citation highlight or chunk attribution; Q&A retains verified
+citation highlighting. **Source details** still exposes immutable IDs, hash and timestamps.
+
+**Filter by title** searches all source titles in the selected workspace, using a
+case-insensitive literal substring. Submit **Apply filter** or press Enter; `%` and
+`_` are literal characters. **Clear** removes the filter. **Refresh** retains the
+applied filter and returns to page one. Catalogue and history pages contain up to
+20 items. Filtering, changing catalogue pages or refreshing clears open details.
+
+Switching between **Ask** and **Browse sources** cancels pending requests and clears
+open source/browsing state; completed Q&A remains available in the same workspace.
+Changing workspace clears both experiences and title drafts. Browsing uses the same
+memory-only credentials, access-loss clearing and inert-text rendering as Q&A.
+Transient failures expose **Retry**; access failures refresh workspace discovery.
+
+Freshness is a snapshot at read time. There is no polling or stable pagination
+snapshot during concurrent uploads; use Refresh to discover new documents/versions.
+Uploads and source updates remain existing API operations. No document text is
+included in catalogue/history responses; only exact-version reads return full text.
+See [Task 006 verification and limitations](docs/TASK_006.md).
+
 ### Web development and host serving
 
 Use Node 24+ and npm; Node 22.13+ on the 22.x line is also supported.
@@ -225,12 +254,12 @@ npm --prefix apps/web exec -- playwright install chromium
 For real-browser integration, use a dedicated Compose project and unused ports:
 
 ```sh
-POSTGRES_PASSWORD=localdev POSTGRES_PORT=55434 API_PORT=58002 \
-  docker compose -p buenos-aires-task005 -f compose.yaml \
+POSTGRES_PASSWORD=localdev POSTGRES_PORT=55436 API_PORT=58006 EMBEDDINGS_ENABLED=false \
+  docker compose -p canberra-task006 -f compose.yaml \
   -f apps/web/e2e/compose.yaml up -d --build --wait
 
-E2E_DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55434/pmknowledge_test \
-E2E_BASE_URL=http://127.0.0.1:58002 \
+E2E_DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55436/pmknowledge_test \
+E2E_BASE_URL=http://127.0.0.1:58006 \
   npm --prefix apps/web run test:e2e
 ```
 
@@ -241,11 +270,13 @@ PostgreSQL database ending in `_test`; never point it at a production database.
 Browser tests expect embeddings to be disabled. Traces, videos and automatic
 screenshots are disabled to avoid recording credentials/source content. An optional
 `E2E_SCREENSHOT_PATH` captures only the synthetic evidence walkthrough after connecting.
+`E2E_SOURCE_BROWSER_SCREENSHOT_PATH` similarly captures the synthetic source-browser
+walkthrough. Save screenshots under `.context/`.
 
 Run the Python checks against the same dedicated database, separately from browser tests:
 
 ```sh
-TEST_DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55434/pmknowledge_test \
+TEST_DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55436/pmknowledge_test \
   uv run pytest -q
 uv run ruff check .
 uv run ruff format --check .
@@ -270,6 +301,8 @@ transitive range; linting/build/test compatibility is verified with that overrid
 | `PUT /api/v1/workspaces/{workspace_id}/members/{user_id}` | Owner token, JSON `{"role":"reader"}` (or `editor`, `owner`) | `200 {user_id, role}`; creates or updates membership |
 | `DELETE /api/v1/workspaces/{workspace_id}/members/{user_id}` | Owner token | `204`; unknown target/membership `404`; final-owner removal `409` |
 | `POST /api/v1/workspaces/{workspace_id}/sources` | Multipart `file`, `title`, optional `external_uri` | `201` ingestion receipt |
+| `GET /api/v1/workspaces/{workspace_id}/sources` | Member token; optional `title`, `limit`, `offset` | `200 {sources, has_more}`; metadata and latest-version identifiers |
+| `GET /api/v1/workspaces/{workspace_id}/sources/{source_id}/versions` | Member token; `limit`, `offset` | `200 {versions, has_more}`; version metadata only |
 | `POST /api/v1/workspaces/{workspace_id}/sources/{source_id}/versions` | Multipart `file` | `201` new version or `200` existing identical version |
 | `GET /api/v1/workspaces/{workspace_id}/sources/{source_id}/versions/{version_id}` | Member token; exact source/version IDs | `200` original text, provenance and computed freshness; historical versions allowed |
 | `GET /api/v1/workspaces/{workspace_id}/search` | Query `q`, optional `limit` (default 5, range 1–20), `mode` | `200 {results:[...]}` ranked excerpts |
@@ -280,6 +313,16 @@ transitive range; linting/build/test compatibility is verified with that overrid
 | `POST /api/v1/workspaces/{workspace_id}/proposals/{proposal_id}/review` | Owner token; JSON `{action: "approve" or "reject", comment?}` | `200` updated proposal with nullable `decision_id` |
 | `GET /api/v1/workspaces/{workspace_id}/decisions` | Member token; `limit`, `offset` | `200 {decisions}`; approved records only |
 | `GET /api/v1/workspaces/{workspace_id}/decisions/{decision_id}` | Member token | `200` decision, evidence, approval attribution and freshness |
+
+Catalogue responses contain `sources` and `has_more`. Source summaries contain
+`workspace_id`, `source_document_id`, `title`, nullable `external_uri`, `created_at`,
+`latest_version_id`, `latest_version_number` and `latest_ingested_at`. History
+responses contain `versions` and `has_more`; rows contain workspace/source/version
+UUIDs, `version_number`, `sha256`, `ingested_at` and `source_is_latest`. Both accept
+`limit` (default 50, range 1–100) and nonnegative `offset`. Sources sort by creation
+timestamp descending then UUID ascending; history sorts by version number descending.
+Optional `title` is trimmed, limited to 200 characters and rejects NUL; blank means
+unfiltered. Literal matching escapes SQL wildcard and escape characters.
 
 Ingestion receipts contain `workspace_id`, `source_document_id`, `document_version_id`,
 `version_number`, `sha256`, `chunk_count`, and `duplicate`. Names/titles have a 200-character
@@ -539,7 +582,7 @@ contents, metadata, and queries. Uvicorn access logging is disabled in documente
 commands because URL query strings can contain question text. Treat source excerpts
 and Markdown as untrusted text if a UI is added; no source instruction is executed.
 
-No external model API, connector, frontend, agent orchestration, or external write
+No external model API, connector, agent orchestration, or external write
 action is implemented. Retrieval does not detect contradictions or evaluate whether
 an excerpt supports an interpretation. The local embedding model is English-only
 and truncates model inputs at 512 tokens; character-based chunks are not token-aware.

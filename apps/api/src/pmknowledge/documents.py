@@ -11,9 +11,129 @@ from pmknowledge.auth import Principal
 from pmknowledge.chunking import chunk_text
 from pmknowledge.embeddings import Embedder, index_version
 from pmknowledge.models import DocumentVersion, SourceChunk, SourceDocument, WorkspaceMembership
-from pmknowledge.schemas import IngestRead, SourceVersionRead
+from pmknowledge.schemas import (
+    IngestRead,
+    SourceList,
+    SourceSummary,
+    SourceVersionList,
+    SourceVersionRead,
+    SourceVersionSummary,
+)
 
 MAX_UPLOAD_BYTES = 1024 * 1024
+
+
+def list_sources(
+    session: Session,
+    workspace_id: UUID,
+    *,
+    principal: Principal,
+    title: str = "",
+    limit: int = 50,
+    offset: int = 0,
+) -> SourceList:
+    require_workspace_access(session, workspace_id, principal)
+    newer = aliased(DocumentVersion)
+    query = (
+        select(
+            SourceDocument.workspace_id,
+            SourceDocument.id.label("source_document_id"),
+            SourceDocument.title,
+            SourceDocument.external_uri,
+            SourceDocument.created_at,
+            DocumentVersion.id.label("latest_version_id"),
+            DocumentVersion.version_number.label("latest_version_number"),
+            DocumentVersion.ingested_at.label("latest_ingested_at"),
+        )
+        .join(DocumentVersion, DocumentVersion.source_document_id == SourceDocument.id)
+        .where(
+            SourceDocument.workspace_id == workspace_id,
+            exists().where(
+                WorkspaceMembership.workspace_id == SourceDocument.workspace_id,
+                WorkspaceMembership.user_id == principal.user_id,
+            ),
+            ~exists().where(
+                newer.source_document_id == SourceDocument.id,
+                newer.version_number > DocumentVersion.version_number,
+            ),
+        )
+    )
+    if title:
+        query = query.where(SourceDocument.title.icontains(title, autoescape=True))
+    rows = (
+        session.execute(
+            query.order_by(SourceDocument.created_at.desc(), SourceDocument.id)
+            .offset(offset)
+            .limit(limit + 1)
+        )
+        .mappings()
+        .all()
+    )
+    return SourceList(
+        sources=[SourceSummary.model_validate(row) for row in rows[:limit]],
+        has_more=len(rows) > limit,
+    )
+
+
+def list_source_versions(
+    session: Session,
+    workspace_id: UUID,
+    source_id: UUID,
+    *,
+    principal: Principal,
+    limit: int = 50,
+    offset: int = 0,
+) -> SourceVersionList:
+    require_workspace_access(session, workspace_id, principal)
+    membership = exists().where(
+        WorkspaceMembership.workspace_id == SourceDocument.workspace_id,
+        WorkspaceMembership.user_id == principal.user_id,
+    )
+    if (
+        session.scalar(
+            select(SourceDocument.id).where(
+                SourceDocument.workspace_id == workspace_id,
+                SourceDocument.id == source_id,
+                membership,
+            )
+        )
+        is None
+    ):
+        raise HTTPException(404, "Source not found")
+    newer = aliased(DocumentVersion)
+    rows = (
+        session.execute(
+            select(
+                SourceDocument.workspace_id,
+                SourceDocument.id.label("source_document_id"),
+                DocumentVersion.id.label("document_version_id"),
+                DocumentVersion.version_number,
+                DocumentVersion.sha256,
+                DocumentVersion.ingested_at,
+                (
+                    ~exists().where(
+                        newer.source_document_id == SourceDocument.id,
+                        newer.version_number > DocumentVersion.version_number,
+                    )
+                ).label("source_is_latest"),
+            )
+            .join(DocumentVersion, DocumentVersion.source_document_id == SourceDocument.id)
+            .where(
+                SourceDocument.workspace_id == workspace_id,
+                SourceDocument.id == source_id,
+                membership,
+            )
+            .order_by(DocumentVersion.version_number.desc())
+            .offset(offset)
+            .limit(limit + 1)
+        )
+        .mappings()
+        .all()
+    )
+    return SourceVersionList(
+        versions=[SourceVersionSummary.model_validate(row) for row in rows[:limit]],
+        has_more=len(rows) > limit,
+    )
 
 
 def read_source_version(

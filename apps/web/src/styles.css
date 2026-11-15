@@ -224,6 +224,52 @@ main {
   align-items: start;
   gap: 2rem;
 }
+.view-navigation,
+.browser-actions,
+.page-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.view-navigation button[aria-pressed='true'] {
+  background: #172b45;
+  border-color: #172b45;
+  color: white;
+}
+.browser-panel {
+  min-width: 0;
+  padding-top: 1.5rem;
+}
+.browser-actions {
+  margin-top: 0.75rem;
+}
+.source-list {
+  list-style: none;
+  padding: 0;
+}
+.source-list li + li {
+  border-top: 1px solid #dce3ed;
+}
+.source-list .citation-button > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #172b45;
+}
+.page-controls {
+  justify-content: space-between;
+  font-size: 0.85rem;
+}
+.version-history {
+  border-top: 1px solid #ccd6e4;
+  padding-top: 1.5rem;
+  overflow-wrap: anywhere;
+}
+.retry-button {
+  display: block;
+  margin-top: 0.75rem;
+}
 .question-panel {
   padding: 1.5rem 0.5rem 1rem 0;
 }
