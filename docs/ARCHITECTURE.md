@@ -17,6 +17,32 @@ API → search service → workspace-filtered keyword retrieval → grounded ans
 
 Model use is an optional adapter; the slice must work offline without API keys.
 
+### Implemented Task 001 runtime
+
+The current service is a single synchronous FastAPI/SQLAlchemy process with
+PostgreSQL 16. `documents` owns upload validation, hashing, versioning and chunk
+creation; `retrieval` owns SQL keyword search and verbatim answer composition.
+Pydantic schemas define the API contract. No generic repository, model adapter,
+object store, graph/vector infrastructure, or agent harness is needed for this slice.
+
+An unauthenticated development endpoint creates workspaces. Creating a source also
+creates version 1 atomically; later uploads use that source UUID in the version URL.
+Each request commits its transaction before returning a successful response. A row
+lock on the scoped source serializes duplicate detection and version numbering.
+
+Search joins chunks through versions and sources, applies `workspace_id` and latest
+version constraints in SQL, then ranks with PostgreSQL English full-text search.
+Chunks have a stored `tsvector` and GIN index. Query lexemes are safely quoted and
+OR-combined; SQL user values are bound parameters. Ties sort by source UUID and chunk
+ordinal. Re-uploading an old hash returns its original version without reactivating it.
+
+The answer composer returns at most three exact quotes and their evidence spans.
+`grounded` denotes directly quoted matching text; semantic relevance, truth,
+contradiction handling and reasoning are not evaluated. Empty retrieval explicitly
+returns `insufficient_evidence` with no citations. No model is called or configured.
+
+See [Task 001 review and verification](TASK_001.md) for decisions and remaining gaps.
+
 ## Ingestion flow
 
 Validate file & workspace scope → save source metadata → parse text → hash/deduplicate → create version and chunks → index → return source/version identifiers.

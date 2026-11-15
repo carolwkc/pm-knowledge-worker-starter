@@ -1,0 +1,7 @@
+Decision record: First observability release (synthetic)
+
+Status: accepted for the fictional Aurora demonstration only.
+
+We prioritised troubleshooting acceleration over predictive alerting. In a synthetic incident exercise, finding the failing service consumed most of the recovery time. Linking errors and logs addresses that bottleneck with a smaller delivery scope.
+
+This exercise is invented test evidence, not real customer research. Success will be evaluated with another simulated incident after the first release.
