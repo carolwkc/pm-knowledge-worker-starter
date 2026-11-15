@@ -4,9 +4,16 @@ from uuid import UUID
 from sqlalchemy import exists, select, text
 from sqlalchemy.orm import Session, aliased
 
-from pmknowledge.documents import require_workspace
+from pmknowledge.access import require_workspace_access
+from pmknowledge.auth import Principal
 from pmknowledge.embeddings import DIMENSIONS, Embedder, EmbeddingUnavailable
-from pmknowledge.models import ChunkEmbedding, DocumentVersion, SourceChunk, SourceDocument
+from pmknowledge.models import (
+    ChunkEmbedding,
+    DocumentVersion,
+    SourceChunk,
+    SourceDocument,
+    WorkspaceMembership,
+)
 from pmknowledge.ranking import reciprocal_rank_fusion
 from pmknowledge.schemas import AnswerRead, Citation, RetrievalMode, SearchHit
 
@@ -26,6 +33,10 @@ SEARCH_SQL = text("""
     JOIN source_document d ON d.id = v.source_document_id
     CROSS JOIN query
     WHERE d.workspace_id = :workspace_id
+      AND EXISTS (
+          SELECT 1 FROM workspace_membership m
+          WHERE m.workspace_id = d.workspace_id AND m.user_id = :user_id
+      )
       AND NOT EXISTS (
           SELECT 1 FROM document_version newer
           WHERE newer.source_document_id = d.id AND newer.version_number > v.version_number
@@ -36,9 +47,17 @@ SEARCH_SQL = text("""
 """)
 
 
-def keyword_search(session: Session, workspace_id: UUID, query: str, limit: int) -> list[SearchHit]:
+def keyword_search(
+    session: Session, workspace_id: UUID, query: str, limit: int, *, principal: Principal
+) -> list[SearchHit]:
     rows = session.execute(
-        SEARCH_SQL, {"workspace_id": workspace_id, "query": query, "limit": limit}
+        SEARCH_SQL,
+        {
+            "workspace_id": workspace_id,
+            "user_id": principal.user_id,
+            "query": query,
+            "limit": limit,
+        },
     ).mappings()
     return [SearchHit.model_validate(row) for row in rows]
 
@@ -50,6 +69,8 @@ def semantic_search(
     limit: int,
     embedder: Embedder,
     min_score: float,
+    *,
+    principal: Principal,
 ) -> list[SearchHit]:
     vector = embedder.embed_query(query)
     if len(vector) != DIMENSIONS or not all(isfinite(v) for v in vector) or not any(vector):
@@ -75,6 +96,10 @@ def semantic_search(
         .join(SourceDocument, SourceDocument.id == DocumentVersion.source_document_id)
         .where(
             SourceDocument.workspace_id == workspace_id,
+            exists().where(
+                WorkspaceMembership.workspace_id == SourceDocument.workspace_id,
+                WorkspaceMembership.user_id == principal.user_id,
+            ),
             ChunkEmbedding.model_id == embedder.model_id,
             ~exists().where(
                 newer.source_document_id == SourceDocument.id,
@@ -94,21 +119,26 @@ def search(
     query: str,
     limit: int,
     *,
+    principal: Principal,
     mode: RetrievalMode = "keyword",
     embedder: Embedder | None = None,
     min_score: float = 0.6,
 ) -> list[SearchHit]:
-    require_workspace(session, workspace_id)
+    require_workspace_access(session, workspace_id, principal)
     if mode == "keyword":
-        return keyword_search(session, workspace_id, query, limit)
+        return keyword_search(session, workspace_id, query, limit, principal=principal)
     if embedder is None:
         raise EmbeddingUnavailable("Embeddings disabled")
     candidates = 20 if mode == "hybrid" else limit
-    semantic = semantic_search(session, workspace_id, query, candidates, embedder, min_score)
+    semantic = semantic_search(
+        session, workspace_id, query, candidates, embedder, min_score, principal=principal
+    )
     if mode == "semantic":
         return semantic
     return reciprocal_rank_fusion(
-        keyword_search(session, workspace_id, query, candidates), semantic, limit
+        keyword_search(session, workspace_id, query, candidates, principal=principal),
+        semantic,
+        limit,
     )
 
 
@@ -118,12 +148,20 @@ def ask(
     question: str,
     limit: int,
     *,
+    principal: Principal,
     mode: RetrievalMode = "keyword",
     embedder: Embedder | None = None,
     min_score: float = 0.6,
 ) -> AnswerRead:
     hits = search(
-        session, workspace_id, question, limit, mode=mode, embedder=embedder, min_score=min_score
+        session,
+        workspace_id,
+        question,
+        limit,
+        principal=principal,
+        mode=mode,
+        embedder=embedder,
+        min_score=min_score,
     )[:3]
     if not hits:
         return AnswerRead(

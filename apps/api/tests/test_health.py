@@ -13,7 +13,9 @@ def test_unavailable_database_returns_safe_service_unavailable_response():
             ("GET", "/health", None),
             ("POST", "/api/v1/workspaces", {"name": "synthetic"}),
         ]:
-            response = client.request(method, path, json=body)
+            response = client.request(
+                method, path, json=body, headers={"Authorization": "Bearer " + "x" * 43}
+            )
             assert response.status_code == 503
             assert response.json() == {"detail": "Database unavailable"}
             assert "private-secret" not in response.text

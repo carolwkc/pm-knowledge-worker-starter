@@ -13,10 +13,11 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from pmknowledge.auth import Principal, create_user
 from pmknowledge.config import Settings
 from pmknowledge.documents import ingest
 from pmknowledge.embeddings import Embedder, LocalEmbedder
-from pmknowledge.models import Workspace
+from pmknowledge.models import Workspace, WorkspaceMembership
 from pmknowledge.retrieval import search
 from pmknowledge.schemas import QueryText, RetrievalMode, ShortText
 
@@ -83,6 +84,10 @@ def evaluate(
         workspace = Workspace(name="Task 002 synthetic evaluation")
         session.add(workspace)
         session.flush()
+        user = create_user(session, "Synthetic evaluation user")
+        session.add(WorkspaceMembership(workspace_id=workspace.id, user_id=user.id, role="owner"))
+        session.flush()
+        principal = Principal(user_id=user.id)
         labels = {}
         for document in dataset.documents:
             receipt = ingest(
@@ -91,6 +96,7 @@ def evaluate(
                 UploadFile(
                     file=BytesIO(document.text.encode("utf-8")), filename=f"{document.id}.txt"
                 ),
+                principal=principal,
                 title=document.title,
                 embedder=embedder,
             )
@@ -106,6 +112,7 @@ def evaluate(
                         workspace.id,
                         case.query,
                         k,
+                        principal=principal,
                         mode=mode,
                         embedder=embedder,
                         min_score=min_score,

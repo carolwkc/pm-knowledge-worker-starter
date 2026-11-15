@@ -32,14 +32,14 @@ class FixtureEmbedder:
 
 
 @pytest.fixture
-def semantic_client(database):
+def semantic_client(database, identity):
     app = create_app(
         Settings(
             database_url=database.url.render_as_string(hide_password=False), embeddings_enabled=True
         ),
         embedder=FixtureEmbedder(),
     )
-    with TestClient(app) as client:
+    with TestClient(app, headers=identity.headers) as client:
         yield client
 
 
@@ -173,7 +173,7 @@ def test_backfill_is_workspace_scoped_and_repeatable(client, workspace, database
 
 
 def test_missing_local_model_returns_safe_error_and_rolls_back_ingestion(
-    database, workspace, tmp_path, monkeypatch
+    database, workspace, tmp_path, monkeypatch, identity
 ):
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
     workspace_id = workspace()
@@ -184,7 +184,7 @@ def test_missing_local_model_returns_safe_error_and_rolls_back_ingestion(
             embedding_cache_dir=str(tmp_path / "missing-cache"),
         )
     )
-    with TestClient(app) as client:
+    with TestClient(app, headers=identity.headers) as client:
         response = upload(client, workspace_id, "Private synthetic payload marker.")
         assert response.status_code == 503
         assert "Private synthetic payload marker" not in response.text
@@ -207,7 +207,7 @@ def test_missing_local_model_returns_safe_error_and_rolls_back_ingestion(
 
 @pytest.mark.parametrize("bad_vector", [[], [float("nan")] * 384, [0.0] * 384])
 def test_invalid_query_vectors_are_rejected_without_database_errors(
-    database, workspace, bad_vector
+    database, workspace, bad_vector, identity
 ):
     class BrokenEmbedder(FixtureEmbedder):
         def embed_query(self, query):
@@ -219,7 +219,7 @@ def test_invalid_query_vectors_are_rejected_without_database_errors(
         ),
         embedder=BrokenEmbedder(),
     )
-    with TestClient(app) as client:
+    with TestClient(app, headers=identity.headers) as client:
         response = client.get(
             f"/api/v1/workspaces/{workspace()}/search", params={"q": "query", "mode": "semantic"}
         )
@@ -294,11 +294,18 @@ def test_evaluation_leaves_no_fixture_data(database):
     )
     with database.connect() as connection:
         before = connection.scalar(text("SELECT count(*) FROM workspace"))
+        users_before = connection.scalar(text("SELECT count(*) FROM app_user"))
+        memberships_before = connection.scalar(text("SELECT count(*) FROM workspace_membership"))
     with Session(database) as session, session.begin():
         report = evaluate(session, dataset, FixtureEmbedder())
         assert report["modes"]["keyword"]["recall_at_k"] == 1.0
     with database.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM workspace")) == before
+        assert connection.scalar(text("SELECT count(*) FROM app_user")) == users_before
+        assert (
+            connection.scalar(text("SELECT count(*) FROM workspace_membership"))
+            == memberships_before
+        )
 
 
 def test_backfill_batches_and_rolls_back_when_a_later_inference_batch_fails(
@@ -335,3 +342,90 @@ def test_backfill_batches_and_rolls_back_when_a_later_inference_batch_fails(
             )
             == 0
         )
+
+
+@pytest.mark.parametrize("mode", ["keyword", "semantic", "hybrid"])
+def test_authorized_candidates_are_selected_before_ranking_and_limit(
+    database, identity, identity_factory, workspace, mode
+):
+    from sqlalchemy.orm import Session
+
+    from pmknowledge.auth import Principal
+    from pmknowledge.retrieval import keyword_search, semantic_search
+
+    class RankedEmbedder(FixtureEmbedder):
+        def embed_passages(self, texts):
+            return [
+                vector(0.6, 0.8) if text == "Allowed service context." else vector(0.0, 1.0)
+                for text in texts
+            ]
+
+    other = identity_factory()
+    own, foreign = workspace(), workspace(headers=other.headers)
+    app = create_app(
+        Settings(
+            database_url=database.url.render_as_string(hide_password=False), embeddings_enabled=True
+        ),
+        embedder=RankedEmbedder(),
+    )
+    with TestClient(app, headers=identity.headers) as api:
+        allowed = upload(api, own, "Allowed service context.").json()
+        for _ in range(21):
+            response = api.post(
+                f"/api/v1/workspaces/{foreign}/sources",
+                data={"title": "Hidden synthetic metadata"},
+                files={"file": ("a.txt", b"Service service service private-marker.")},
+                headers=other.headers,
+            )
+            assert response.status_code == 201
+        root = f"/api/v1/workspaces/{own}"
+        hits = api.get(root + "/search", params={"q": "service", "mode": mode, "limit": 1}).json()[
+            "results"
+        ]
+        assert [hit["source_document_id"] for hit in hits] == [allowed["source_document_id"]]
+        answer = api.post(root + "/ask", json={"question": "service", "mode": mode}).json()
+        assert [hit["chunk_id"] for hit in answer["sources"]] == [hits[0]["chunk_id"]]
+        assert "private-marker" not in str(answer) and "Hidden synthetic" not in str(answer)
+        assert (
+            api.get(
+                f"/api/v1/workspaces/{foreign}/search", params={"q": "service", "mode": mode}
+            ).status_code
+            == 404
+        )
+    # These lower-level queries must independently apply membership in SQL.
+    with Session(database) as session:
+        principal = Principal(identity.user_id)
+        assert keyword_search(session, UUID(foreign), "service", 1, principal=principal) == []
+        assert (
+            semantic_search(
+                session, UUID(foreign), "service", 1, RankedEmbedder(), 0.6, principal=principal
+            )
+            == []
+        )
+
+
+@pytest.mark.parametrize("mode", ["keyword", "semantic", "hybrid"])
+def test_denied_workspace_never_invokes_inference(
+    database, identity, identity_factory, workspace, mode
+):
+    class ForbiddenEmbedder(FixtureEmbedder):
+        def embed_passages(self, texts):
+            raise AssertionError("Denied upload reached inference")
+
+        def embed_query(self, query):
+            raise AssertionError("Denied query reached inference")
+
+    foreign = workspace(headers=identity_factory().headers)
+    app = create_app(
+        Settings(
+            database_url=database.url.render_as_string(hide_password=False), embeddings_enabled=True
+        ),
+        embedder=ForbiddenEmbedder(),
+    )
+    with TestClient(app, headers=identity.headers) as api:
+        root = f"/api/v1/workspaces/{foreign}"
+        assert api.get(root + "/search", params={"q": "evidence", "mode": mode}).status_code == 404
+        assert (
+            api.post(root + "/ask", json={"question": "evidence", "mode": mode}).status_code == 404
+        )
+        assert upload(api, foreign, "Synthetic evidence").status_code == 404

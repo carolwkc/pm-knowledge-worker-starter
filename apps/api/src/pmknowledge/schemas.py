@@ -13,6 +13,19 @@ QueryText = Annotated[
     StringConstraints(strip_whitespace=True, min_length=1, max_length=1000, pattern=r"^[^\x00]+$"),
 ]
 RetrievalMode = Literal["keyword", "semantic", "hybrid"]
+WorkspaceRole = Literal["reader", "editor", "owner"]
+
+
+class UserCreate(BaseModel):
+    name: ShortText
+
+
+class UserRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    created_at: datetime
 
 
 class WorkspaceCreate(BaseModel):
@@ -25,6 +38,30 @@ class WorkspaceRead(BaseModel):
     id: UUID
     name: str
     created_at: datetime
+
+
+class JoinedWorkspace(WorkspaceRead):
+    role: WorkspaceRole
+
+
+class WorkspaceList(BaseModel):
+    workspaces: list[JoinedWorkspace]
+
+
+class MembershipWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: WorkspaceRole
+
+
+class MembershipRead(MembershipWrite):
+    model_config = ConfigDict(from_attributes=True)
+
+    user_id: UUID
+
+
+class MembershipList(BaseModel):
+    members: list[MembershipRead]
 
 
 class IngestRead(BaseModel):

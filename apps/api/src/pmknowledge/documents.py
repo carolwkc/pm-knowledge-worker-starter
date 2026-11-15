@@ -6,17 +6,14 @@ from fastapi import HTTPException, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from pmknowledge.access import require_workspace_access
+from pmknowledge.auth import Principal
 from pmknowledge.chunking import chunk_text
 from pmknowledge.embeddings import Embedder, index_version
-from pmknowledge.models import DocumentVersion, SourceChunk, SourceDocument, Workspace
+from pmknowledge.models import DocumentVersion, SourceChunk, SourceDocument
 from pmknowledge.schemas import IngestRead
 
 MAX_UPLOAD_BYTES = 1024 * 1024
-
-
-def require_workspace(session: Session, workspace_id: UUID) -> None:
-    if session.get(Workspace, workspace_id) is None:
-        raise HTTPException(404, "Workspace not found")
 
 
 def ingest(
@@ -24,12 +21,13 @@ def ingest(
     workspace_id: UUID,
     upload: UploadFile,
     *,
+    principal: Principal,
     source_id: UUID | None = None,
     title: str | None = None,
     external_uri: str | None = None,
     embedder: Embedder | None = None,
 ) -> IngestRead:
-    require_workspace(session, workspace_id)
+    require_workspace_access(session, workspace_id, principal, "editor")
     source = None
     if source_id is not None:
         # Serializes deduplication and numbering for this source, before reading versions.
