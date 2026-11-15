@@ -59,6 +59,7 @@ function mockApi(
     if (path.endsWith('/me')) return reply(user);
     if (path.endsWith('/workspaces')) return reply({ workspaces: options.empty ? [] : workspaces });
     if (path.endsWith('/ask')) return options.ask ? options.ask() : reply(answer);
+    if (path.includes('/sources?')) return reply({ sources: [], has_more: false });
     if (path.endsWith('/versions/v1')) return options.source ? options.source() : reply(version);
     return reply({ detail: 'Not found' }, 404);
   });
@@ -106,6 +107,21 @@ it('explains an empty workspace list', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
   expect(await screen.findByText(/No workspaces yet/)).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Ask question' })).not.toBeInTheDocument();
+});
+
+it('preserves completed Q&A across browsing and restores verified citation navigation', async () => {
+  mockApi();
+  render(<App />);
+  await connect();
+  await ask();
+  await screen.findByRole('button', { name: '[1] Synthetic source' });
+  await userEvent.click(screen.getByRole('button', { name: 'Browse sources' }));
+  await screen.findByText(/No documents yet/);
+  await userEvent.click(screen.getByRole('button', { name: 'Ask' }));
+  expect(document.querySelector('.answer-text')?.textContent).toBe(answer.answer);
+  await userEvent.click(screen.getByRole('button', { name: '[1] Synthetic source' }));
+  await screen.findByTestId('source-text');
+  expect(screen.getByTestId('source-text').querySelector('mark')?.textContent).toBe(quote);
 });
 
 it('shows insufficient evidence without inventing citations', async () => {

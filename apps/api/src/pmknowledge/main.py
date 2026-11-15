@@ -36,7 +36,7 @@ from pmknowledge.decisions import (
     read_decisions,
     review_proposal,
 )
-from pmknowledge.documents import ingest, read_source_version
+from pmknowledge.documents import ingest, list_source_versions, list_sources, read_source_version
 from pmknowledge.embeddings import Embedder, EmbeddingUnavailable, LocalEmbedder
 from pmknowledge.models import User, Workspace, WorkspaceMembership
 from pmknowledge.retrieval import ask, search
@@ -58,7 +58,10 @@ from pmknowledge.schemas import (
     RetrievalMode,
     ReviewWrite,
     SearchRead,
+    SourceList,
+    SourceVersionList,
     SourceVersionRead,
+    TitleFilter,
     UserRead,
     WorkspaceCreate,
     WorkspaceList,
@@ -276,6 +279,35 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
     ) -> Response:
         change_membership(session, workspace_id, principal, user_id, None)
         return Response(status_code=204)
+
+    @routes.get("/api/v1/workspaces/{workspace_id}/sources", response_model=SourceList)
+    def browse_sources(
+        workspace_id: UUID,
+        session: Database,
+        principal: Identity,
+        title: Annotated[TitleFilter, Query()] = "",
+        limit: Annotated[int, Query(ge=1, le=100)] = 50,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> SourceList:
+        return list_sources(
+            session, workspace_id, principal=principal, title=title, limit=limit, offset=offset
+        )
+
+    @routes.get(
+        "/api/v1/workspaces/{workspace_id}/sources/{source_id}/versions",
+        response_model=SourceVersionList,
+    )
+    def browse_versions(
+        workspace_id: UUID,
+        source_id: UUID,
+        session: Database,
+        principal: Identity,
+        limit: Annotated[int, Query(ge=1, le=100)] = 50,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> SourceVersionList:
+        return list_source_versions(
+            session, workspace_id, source_id, principal=principal, limit=limit, offset=offset
+        )
 
     @routes.post(
         "/api/v1/workspaces/{workspace_id}/sources", response_model=IngestRead, status_code=201

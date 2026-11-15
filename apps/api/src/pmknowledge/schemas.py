@@ -87,6 +87,42 @@ class SourceVersionRead(BaseModel):
     source_is_latest: bool
 
 
+TitleFilter = Annotated[
+    str, StringConstraints(strip_whitespace=True, max_length=200, pattern=r"^[^\x00]*$")
+]
+
+
+class SourceSummary(BaseModel):
+    workspace_id: UUID
+    source_document_id: UUID
+    title: str
+    external_uri: str | None
+    created_at: datetime
+    latest_version_id: UUID
+    latest_version_number: int
+    latest_ingested_at: datetime
+
+
+class SourceList(BaseModel):
+    sources: list[SourceSummary]
+    has_more: bool
+
+
+class SourceVersionSummary(BaseModel):
+    workspace_id: UUID
+    source_document_id: UUID
+    document_version_id: UUID
+    version_number: int
+    sha256: str
+    ingested_at: datetime
+    source_is_latest: bool
+
+
+class SourceVersionList(BaseModel):
+    versions: list[SourceVersionSummary]
+    has_more: bool
+
+
 class Evidence(BaseModel):
     source_document_id: UUID
     document_version_id: UUID

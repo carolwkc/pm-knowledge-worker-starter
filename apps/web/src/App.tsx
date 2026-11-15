@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { RetrievalMode } from './api';
 import { SourcePanel } from './SourcePanel';
+import { SourceBrowser } from './SourceBrowser';
 import { useKnowledge } from './useKnowledge';
 
 export default function App() {
@@ -13,8 +14,12 @@ export default function App() {
       : desk.busy === 'ask'
         ? 'Finding source evidence…'
         : desk.busy === 'source'
-          ? 'Opening the cited source…'
-          : '';
+          ? 'Opening the source…'
+          : desk.busy === 'catalogue'
+            ? 'Loading source catalogue…'
+            : desk.busy === 'history'
+              ? 'Loading version history…'
+              : '';
 
   return (
     <div className="app-shell">
@@ -108,6 +113,24 @@ export default function App() {
               </div>
               {selected && <span className="role-label">{selected.role} access</span>}
             </div>
+            {desk.workspaces.length > 0 && (
+              <nav className="view-navigation" aria-label="Workspace views">
+                <button
+                  className="quiet-button"
+                  aria-pressed={desk.view === 'ask'}
+                  onClick={() => desk.selectView('ask')}
+                >
+                  Ask
+                </button>
+                <button
+                  className="quiet-button"
+                  aria-pressed={desk.view === 'browse'}
+                  onClick={() => desk.selectView('browse')}
+                >
+                  Browse sources
+                </button>
+              </nav>
+            )}
             {!desk.workspaces.length ? (
               <section className="empty-workspace">
                 <h1>No workspaces yet</h1>
@@ -117,103 +140,125 @@ export default function App() {
               </section>
             ) : (
               <div className="desk-layout">
-                <section className="question-panel" aria-labelledby="question-heading">
-                  <h1 id="question-heading">What would you like to understand?</h1>
-                  <p className="lead">
-                    Find the source evidence behind your team’s product decisions.
-                  </p>
-                  <form
-                    aria-label="Ask your workspace"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void desk.ask();
-                    }}
-                  >
-                    <label htmlFor="question">Your question</label>
-                    <textarea
-                      id="question"
-                      value={desk.question}
-                      onChange={(event) => desk.setQuestion(event.target.value)}
-                      maxLength={1000}
-                      required
-                      rows={3}
-                      placeholder="Why was troubleshooting acceleration prioritised?"
-                      aria-describedby="question-help"
-                    />
-                    <div className="question-options">
-                      <div>
-                        <label htmlFor="mode">Retrieval mode</label>
-                        <select
-                          id="mode"
-                          value={desk.mode}
-                          onChange={(event) => desk.setMode(event.target.value as RetrievalMode)}
-                        >
-                          <option value="keyword">Keyword</option>
-                          <option value="semantic">Semantic</option>
-                          <option value="hybrid">Hybrid</option>
-                        </select>
-                      </div>
-                      <button type="submit" disabled={!desk.question.trim() || desk.busy === 'ask'}>
-                        Ask question
-                      </button>
-                    </div>
-                    <p id="question-help" className="small-print">
-                      Answers quote your sources directly. Semantic and hybrid modes require local
-                      embeddings to be enabled.
+                {desk.view === 'browse' ? (
+                  <SourceBrowser
+                    key={desk.workspaceId}
+                    browser={desk.browser}
+                    onFilter={desk.setTitleFilter}
+                    busy={desk.busy !== null}
+                    versionId={desk.source?.version.document_version_id}
+                    onCatalogue={(title, offset) => void desk.loadCatalogue(title, offset)}
+                    onHistory={(source, offset, openLatest) =>
+                      void desk.loadHistory(source, offset, openLatest)
+                    }
+                    onVersion={(ref) => void desk.openVersion(ref)}
+                  />
+                ) : (
+                  <section className="question-panel" aria-labelledby="question-heading">
+                    <h1 id="question-heading">What would you like to understand?</h1>
+                    <p className="lead">
+                      Find the source evidence behind your team’s product decisions.
                     </p>
-                  </form>
-                  {desk.answer ? (
-                    <section className="answer" aria-labelledby="answer-heading">
-                      <div className="answer-heading">
-                        <h2 id="answer-heading">
-                          {desk.answer.status === 'grounded'
-                            ? 'Quoted source evidence'
-                            : 'Insufficient evidence'}
-                        </h2>
-                        <span className="answer-status">
-                          {desk.answer.status === 'grounded'
-                            ? `${desk.answer.sources.length} cited ${desk.answer.sources.length === 1 ? 'excerpt' : 'excerpts'}`
-                            : 'No matching excerpts'}
-                        </span>
+                    <form
+                      aria-label="Ask your workspace"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void desk.ask();
+                      }}
+                    >
+                      <label htmlFor="question">Your question</label>
+                      <textarea
+                        id="question"
+                        value={desk.question}
+                        onChange={(event) => desk.setQuestion(event.target.value)}
+                        maxLength={1000}
+                        required
+                        rows={3}
+                        placeholder="Why was troubleshooting acceleration prioritised?"
+                        aria-describedby="question-help"
+                      />
+                      <div className="question-options">
+                        <div>
+                          <label htmlFor="mode">Retrieval mode</label>
+                          <select
+                            id="mode"
+                            value={desk.mode}
+                            onChange={(event) => desk.setMode(event.target.value as RetrievalMode)}
+                          >
+                            <option value="keyword">Keyword</option>
+                            <option value="semantic">Semantic</option>
+                            <option value="hybrid">Hybrid</option>
+                          </select>
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={!desk.question.trim() || desk.busy === 'ask'}
+                        >
+                          Ask question
+                        </button>
                       </div>
-                      <p className="answer-text">{desk.answer.answer}</p>
-                      {desk.answer.sources.length > 0 && (
-                        <>
-                          <p className="small-print">
-                            Matching text is evidence from a source; it may not fully answer your
-                            question or establish that the source is correct.
-                          </p>
-                          <h3>Inspect the sources</h3>
-                          <ul className="citation-list">
-                            {desk.answer.sources.map((c) => (
-                              <li key={c.citation}>
-                                <button
-                                  className="citation-button"
-                                  aria-label={`[${c.citation}] ${c.title}`}
-                                  aria-pressed={desk.source?.citation.chunk_id === c.chunk_id}
-                                  onClick={() => void desk.openSource(c)}
-                                >
-                                  <span className="citation-number">[{c.citation}]</span>
-                                  <span>
-                                    {c.title}
-                                    <small>Open original context</small>
-                                  </span>
-                                  <span aria-hidden="true">↗</span>
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        </>
-                      )}
-                    </section>
-                  ) : (
-                    <div className="answer-placeholder">
-                      <h2>Start with a question</h2>
-                      <p>Matching excerpts will appear here, with citations you can inspect.</p>
-                    </div>
-                  )}
-                </section>
-                <SourcePanel source={desk.source} loading={desk.busy === 'source'} />
+                      <p id="question-help" className="small-print">
+                        Answers quote your sources directly. Semantic and hybrid modes require local
+                        embeddings to be enabled.
+                      </p>
+                    </form>
+                    {desk.answer ? (
+                      <section className="answer" aria-labelledby="answer-heading">
+                        <div className="answer-heading">
+                          <h2 id="answer-heading">
+                            {desk.answer.status === 'grounded'
+                              ? 'Quoted source evidence'
+                              : 'Insufficient evidence'}
+                          </h2>
+                          <span className="answer-status">
+                            {desk.answer.status === 'grounded'
+                              ? `${desk.answer.sources.length} cited ${desk.answer.sources.length === 1 ? 'excerpt' : 'excerpts'}`
+                              : 'No matching excerpts'}
+                          </span>
+                        </div>
+                        <p className="answer-text">{desk.answer.answer}</p>
+                        {desk.answer.sources.length > 0 && (
+                          <>
+                            <p className="small-print">
+                              Matching text is evidence from a source; it may not fully answer your
+                              question or establish that the source is correct.
+                            </p>
+                            <h3>Inspect the sources</h3>
+                            <ul className="citation-list">
+                              {desk.answer.sources.map((c) => (
+                                <li key={c.citation}>
+                                  <button
+                                    className="citation-button"
+                                    aria-label={`[${c.citation}] ${c.title}`}
+                                    aria-pressed={desk.source?.citation?.chunk_id === c.chunk_id}
+                                    onClick={() => void desk.openSource(c)}
+                                  >
+                                    <span className="citation-number">[{c.citation}]</span>
+                                    <span>
+                                      {c.title}
+                                      <small>Open original context</small>
+                                    </span>
+                                    <span aria-hidden="true">↗</span>
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
+                      </section>
+                    ) : (
+                      <div className="answer-placeholder">
+                        <h2>Start with a question</h2>
+                        <p>Matching excerpts will appear here, with citations you can inspect.</p>
+                      </div>
+                    )}
+                  </section>
+                )}
+                <SourcePanel
+                  source={desk.source}
+                  loading={desk.busy === 'source' || desk.busy === 'history'}
+                  browsing={desk.view === 'browse'}
+                />
               </div>
             )}
           </>
@@ -222,9 +267,14 @@ export default function App() {
           {status}
         </div>
         {desk.error && (
-          <p className="error global-error" role="alert">
+          <div className="error global-error" role="alert">
             {desk.error}
-          </p>
+            {desk.retry && (
+              <button className="quiet-button retry-button" onClick={desk.retry}>
+                Retry
+              </button>
+            )}
+          </div>
         )}
       </main>
       <footer>Evidence first. Human judgment always.</footer>
