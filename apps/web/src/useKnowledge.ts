@@ -5,6 +5,8 @@ import {
   type Answer,
   type Citation,
   type Evidence,
+  type IngestReceipt,
+  type UploadSourceInput,
   type ProposalFilter,
   type ReviewAction,
   type RetrievalMode,
@@ -40,12 +42,14 @@ export interface BrowserState {
   filterDraft: string;
   offset: number;
   loaded: boolean;
-  selected: SourceSummary | null;
+  selected: SourceSelection | null;
   versions: SourceVersionSummary[];
   versionsHasMore: boolean;
   versionsLoaded: boolean;
   versionOffset: number;
 }
+
+export type SourceSelection = Pick<SourceSummary, 'workspace_id' | 'source_document_id' | 'title'>;
 
 function emptyBrowser(): BrowserState {
   return {
@@ -77,6 +81,9 @@ export function useKnowledge() {
   const [decisions, setDecisions] = useState(emptyDecisions);
   const [generated, setGenerated] = useState('');
   const [browser, setBrowser] = useState<BrowserState>(emptyBrowser);
+  const [uploadTarget, setUploadTarget] = useState<{ source: SourceSelection | null } | null>(null);
+  const [uploadReceipt, setUploadReceipt] = useState<IngestReceipt | null>(null);
+  const [uploadUncertain, setUploadUncertain] = useState(false);
   const [busy, setBusy] = useState<
     | 'connect'
     | 'ask'
@@ -87,6 +94,7 @@ export function useKnowledge() {
     | 'detail'
     | 'generate'
     | 'review'
+    | 'upload'
     | null
   >(null);
   const [error, setError] = useState('');
@@ -116,10 +124,17 @@ export function useKnowledge() {
   }
 
   function clearEvidence() {
+    clearUpload();
     setAnswer(null);
     setSource(null);
     setDecisions(emptyDecisions());
     setGenerated('');
+  }
+
+  function clearUpload() {
+    setUploadTarget(null);
+    setUploadReceipt(null);
+    setUploadUncertain(false);
   }
 
   function disconnect(message = '') {
@@ -186,6 +201,7 @@ export function useKnowledge() {
     if (next === 'proposals' && role !== 'editor' && role !== 'owner') return;
     if (next === view) return;
     begin();
+    clearUpload();
     setView(next);
     setSource(null);
     setBrowser(emptyBrowser());
@@ -349,6 +365,7 @@ export function useKnowledge() {
   async function loadCatalogue(title = browser.title, offset = 0, scope = workspaceId) {
     if (!session || !scope) return;
     const operation = begin();
+    clearUpload();
     const applied = title.trim();
     setSource(null);
     setGenerated('');
@@ -387,9 +404,10 @@ export function useKnowledge() {
     setSource({ version, citation: null });
   }
 
-  async function loadHistory(selected: SourceSummary, offset = 0, openLatest = false) {
+  async function loadHistory(selected: SourceSelection, offset = 0, openLatest = false) {
     if (!session || !workspaceId || selected.workspace_id !== workspaceId) return;
     const operation = begin();
+    clearUpload();
     setGenerated('');
     let context: 'history' | 'source' = 'history';
     if (openLatest) setSource(null);
@@ -441,6 +459,7 @@ export function useKnowledge() {
   async function openVersion(ref: SourceRef) {
     if (!session || !workspaceId) return;
     const operation = begin();
+    clearUpload();
     setGenerated('');
     setSource(null);
     setBusy('source');
@@ -735,7 +754,176 @@ export function useKnowledge() {
     }
   }
 
+  const canUpload = view === 'browse' && (role === 'editor' || role === 'owner');
+
+  function openUpload(target: SourceSelection | null) {
+    if (!canUpload || busy || writing.current || (target && target.workspace_id !== workspaceId))
+      return;
+    clearUpload();
+    setError('');
+    setRetry(null);
+    setUploadTarget({ source: target });
+  }
+
+  // A receipt is a committed write. Failures below can only retry reads.
+  async function readUploaded(
+    receipt: IngestReceipt,
+    selected: SourceSelection,
+    operation: ReturnType<typeof begin>,
+  ) {
+    if (!session) return;
+    let context: 'source' | 'catalogue' | 'history' = 'source';
+    try {
+      const version = await api.source(session.token, workspaceId, receipt, operation.signal);
+      if (!operation.current()) return;
+      if (
+        version.workspace_id !== workspaceId ||
+        version.source_document_id !== receipt.source_document_id ||
+        version.document_version_id !== receipt.document_version_id ||
+        version.sha256 !== receipt.sha256 ||
+        version.version_number !== receipt.version_number
+      )
+        throw new SourceMismatch();
+      setSource({ version, citation: null });
+      setBrowser((b) => ({ ...b, selected: { ...selected, title: version.title } }));
+      context = 'catalogue';
+      const catalogue = await api.sources(session.token, workspaceId, '', 0, operation.signal);
+      if (!operation.current()) return;
+      if (catalogue.sources.some((s) => s.workspace_id !== workspaceId)) throw new SourceMismatch();
+      setBrowser((b) => ({
+        ...b,
+        sources: catalogue.sources,
+        hasMore: catalogue.has_more,
+        loaded: true,
+      }));
+      context = 'history';
+      const history = await api.versions(
+        session.token,
+        workspaceId,
+        receipt.source_document_id,
+        0,
+        operation.signal,
+      );
+      if (!operation.current()) return;
+      if (
+        history.versions.some(
+          (v) =>
+            v.workspace_id !== workspaceId || v.source_document_id !== receipt.source_document_id,
+        )
+      )
+        throw new SourceMismatch();
+      setBrowser((b) => ({
+        ...b,
+        versions: history.versions,
+        versionsHasMore: history.has_more,
+        versionsLoaded: true,
+      }));
+    } catch (failure) {
+      if (await handleFailure(failure, operation, context))
+        setRetry(() => () => void refreshUploaded(receipt, selected));
+    }
+  }
+
+  async function refreshUploaded(receipt: IngestReceipt, selected: SourceSelection) {
+    if (!session || receipt.workspace_id !== workspaceId || view !== 'browse') return;
+    const operation = begin();
+    setBusy('upload');
+    setError('');
+    setRetry(null);
+    try {
+      await readUploaded(receipt, selected, operation);
+    } finally {
+      if (operation.current()) setBusy(null);
+    }
+  }
+
+  async function submitUpload(input: UploadSourceInput) {
+    if (!session || !workspaceId || !canUpload || !uploadTarget || busy || writing.current) return;
+    const target = uploadTarget.source;
+    if (target && target.workspace_id !== workspaceId) return;
+    const operation = begin();
+    writing.current = true;
+    setBusy('upload');
+    setError('');
+    setRetry(null);
+    setUploadUncertain(false);
+    try {
+      const receipt = target
+        ? await api.uploadVersion(
+            session.token,
+            workspaceId,
+            target.source_document_id,
+            input.file,
+            operation.signal,
+          )
+        : await api.uploadSource(session.token, workspaceId, input, operation.signal);
+      if (!operation.current()) return;
+      if (
+        !receipt ||
+        receipt.workspace_id !== workspaceId ||
+        !receipt.source_document_id ||
+        typeof receipt.source_document_id !== 'string' ||
+        !receipt.document_version_id ||
+        typeof receipt.document_version_id !== 'string' ||
+        (target && receipt.source_document_id !== target.source_document_id) ||
+        !Number.isInteger(receipt.version_number) ||
+        receipt.version_number < 1 ||
+        typeof receipt.sha256 !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(receipt.sha256) ||
+        !Number.isInteger(receipt.chunk_count) ||
+        receipt.chunk_count < 1 ||
+        typeof receipt.duplicate !== 'boolean'
+      )
+        throw new SourceMismatch();
+      setUploadReceipt(receipt);
+      setUploadTarget(null);
+      setSource(null);
+      setGenerated('');
+      const selected = {
+        workspace_id: workspaceId,
+        source_document_id: receipt.source_document_id,
+        title: target?.title ?? input.title,
+      };
+      setBrowser({ ...emptyBrowser(), selected });
+      await readUploaded(receipt, selected, operation);
+    } catch (failure) {
+      if (!operation.current()) return;
+      if (failure instanceof ApiError && [401, 403, 404].includes(failure.status))
+        await handleFailure(failure, operation, 'source');
+      else if (failure instanceof ApiError && [413, 415, 422].includes(failure.status)) {
+        setError(
+          failure.status === 413
+            ? 'The file must be at most 1 MiB (1,048,576 bytes).'
+            : failure.status === 415
+              ? 'Choose a Markdown (.md/.markdown) or plain-text (.txt) file.'
+              : 'Check the title and source URI limits. The file must contain nonblank UTF-8 text without NUL characters.',
+        );
+      } else {
+        setUploadUncertain(true);
+        setError(
+          'Upload outcome uncertain. The server may have saved the file. Inspect the source catalogue before manually submitting again. Another new-source submission can create a separate document; versions deduplicate content within their source.',
+        );
+      }
+    } finally {
+      writing.current = false;
+      if (operation.current()) setBusy(null);
+    }
+  }
+
   return {
+    canUpload,
+    uploadTarget,
+    uploadReceipt,
+    uploadUncertain,
+    openUpload,
+    cancelUpload: () => {
+      if (!busy) {
+        clearUpload();
+        setError('');
+        setRetry(null);
+      }
+    },
+    submitUpload,
     user: session?.user,
     workspaces,
     workspaceId,

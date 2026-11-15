@@ -19,7 +19,9 @@ See the historical [Task 004 verification and limitations](docs/TASK_004.md).
   See [specification](tasks/006-source-browser.md) and [verification](docs/TASK_006.md).
 - Task 007: Decision browser, explicit proposal generation and owner review queue.
   See [specification](tasks/007-decision-browser-review.md) and [verification](docs/TASK_007.md).
-- Later tasks: user feedback and upload UI.
+- Task 008: Browser uploads for new sources and immutable source versions.
+  See [specification](tasks/008-browser-uploads.md) and [verification](docs/TASK_008.md).
+- Later tasks: user feedback.
 
 ## Milestone 3: Agent Harness
 
