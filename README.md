@@ -10,6 +10,9 @@ and explicitly submitted Q&A feedback with owner inspection.
 All supplied content is synthetic. Local CPU embeddings are opt-in; keyword mode
 remains the default.
 
+Task 010 adds a larger synthetic pilot evaluation baseline for retrieval, quoted
+answers and permission/version integrity; it changes no product endpoints or ranking.
+
 For a single inventory of what is built and step-by-step end-to-end verification
 instructions, see [Capabilities and end-to-end testing](docs/CAPABILITIES_AND_TESTING.md).
 
@@ -650,6 +653,72 @@ Recorded results and limitations are in [Task 002 verification](docs/TASK_002.md
 These tiny synthetic measurements are not evidence that later pilot quality targets
 have been achieved. Ties use source UUIDs, so MRR can vary across fresh evaluation
 workspaces when hybrid candidates have equal scores.
+
+## Task 010: pilot evaluation baseline
+
+The expanded corpus has 20 synthetic multi-paragraph documents and 40 questions:
+10 lexical, 10 paraphrase, 10 requiring two sources and 10 missing-evidence questions.
+Gold labels identify exact supporting spans, including Unicode and CRLF examples.
+The original Task 002 dataset and recorded results remain unchanged.
+
+Run against a migrated local PostgreSQL database. For a dedicated evaluation/test
+database on an unused port (no existing services or volumes are removed):
+
+```sh
+POSTGRES_PASSWORD=localdev POSTGRES_PORT=55440 \
+  docker compose -p dubai-task010 up -d --wait db
+DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55440/pmknowledge_test \
+  uv run alembic upgrade head
+
+# Offline, model-free baseline:
+DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55440/pmknowledge_test \
+  uv run python -m pmknowledge.evaluation \
+  --cases apps/api/evaluation/pilot-cases.json --modes keyword --k 10
+
+# First explicitly download the existing public model if it is not cached.
+# This downloads weights; no document text leaves the host.
+EMBEDDING_CACHE_DIR=.context/embedding-models HF_HUB_OFFLINE=0 \
+  uv run python -m pmknowledge.embeddings download
+
+# Required three-mode comparison; runtime uses cached weights only:
+DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55440/pmknowledge_test \
+EMBEDDING_CACHE_DIR=.context/embedding-models HF_HUB_OFFLINE=1 \
+  uv run python -m pmknowledge.evaluation \
+  --cases apps/api/evaluation/pilot-cases.json --modes keyword semantic hybrid --k 10
+```
+
+The CLI retains its existing defaults (Task 002 cases, all modes, k=3). Keyword-only
+runs never load embeddings. Model modes fail explicitly when cached weights are
+unavailable; there is no automatic download or mode substitution.
+
+JSON report version 2 preserves recall@k, MRR@k and negative-query no-evidence accuracy.
+It separately measures actual ask-service answers, still capped at three citations:
+
+- **Citation integrity:** citations whose identity, workspace, latest version,
+  metadata and original text/span match persisted evidence and the authored fixture,
+  divided by emitted citations. Ingested text, hashes and metadata are checked against
+  the dataset independently before scoring; corrupted fixtures fail even if never retrieved.
+- **Evidence precision:** verified citations containing a gold supporting span divided
+  by all emitted citations, including irrelevant answers to negative questions.
+- **Evidence recall:** average fraction of distinct gold spans covered per positive
+  question; an unanswered positive contributes zero. Negative questions are excluded.
+
+All three include numerators/denominators; empty denominators are null. Legacy datasets
+without spans have null evidence precision/recall. Labels must cover all cases or none.
+Source IDs alone never establish relevant support. Answer formatting and unscored
+foreign-workspace/latest-version probes are independent hard checks. All fixtures,
+including probe identities and embeddings, roll back on success and failure.
+
+Exit **0** means complete measurements and passing integrity checks, even with poor
+recall or abstention; **1** means completed integrity failures (inspect JSON);
+**2** means incomplete execution/configuration (safe diagnostic on stderr). No partial
+report is presented as a completed baseline. Reports contain synthetic questions,
+quotes and case-level rankings plus dataset/model/runtime provenance.
+
+These measurements do not establish semantic truth, contradiction resolution or pilot
+readiness. Existing UUID tie behavior can change rankings across fresh runs. Ranking
+and thresholds are unchanged. See [Task 010 verification and follow-up](docs/TASK_010.md)
+and [specification](tasks/010-pilot-evaluation.md).
 
 ## Tests and checks
 

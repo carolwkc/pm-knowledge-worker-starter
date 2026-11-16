@@ -1,6 +1,6 @@
 # Capabilities and end-to-end testing
 
-Coverage: Tasks 001–009. All supplied content is synthetic.
+Coverage: Tasks 001–010. All supplied content is synthetic.
 
 This document is the single inventory of what PM Knowledge Worker currently does and
 how to verify it end to end. [README.md](../README.md) remains canonical for per-task
@@ -9,7 +9,7 @@ document must be corrected.
 
 ## Purpose and scope
 
-- Applies to the current `main` branch after Tasks 001–009.
+- Applies to the implementation through Tasks 001–010.
 - Lists user-visible capabilities, their API endpoints, minimum workspace role and
   key source files.
 - Provides a repeatable local runbook: Docker Compose quickstart, identity/workspace
@@ -34,6 +34,7 @@ Each row names the endpoint template literally as `` `METHOD /api/v1/path` `` wi
 | Decisions | Generate deterministic `decision-marker-v1` proposals from a latest version; browse the queue; inspect a proposal; approve/reject as owner; browse and read immutable approved decisions | `POST /api/v1/workspaces/{workspace_id}/sources/{source_id}/versions/{version_id}/proposals`<br>`GET /api/v1/workspaces/{workspace_id}/proposals`<br>`GET /api/v1/workspaces/{workspace_id}/proposals/{proposal_id}`<br>`POST /api/v1/workspaces/{workspace_id}/proposals/{proposal_id}/review`<br>`GET /api/v1/workspaces/{workspace_id}/decisions`<br>`GET /api/v1/workspaces/{workspace_id}/decisions/{decision_id}` | editor for proposals; owner for review; reader for decisions | `apps/api/src/pmknowledge/decisions.py`, `apps/api/migrations/versions/0004_decision_review.py` |
 | Feedback | Submit explicit Helpful/Not helpful feedback with optional reason and comment (idempotent by `submission_id`); owner-only list by rating and detail with saved Q&A context | `POST /api/v1/workspaces/{workspace_id}/feedback`<br>`GET /api/v1/workspaces/{workspace_id}/feedback`<br>`GET /api/v1/workspaces/{workspace_id}/feedback/{feedback_id}` | reader to submit; owner to inspect | `apps/api/src/pmknowledge/feedback.py`, `apps/api/migrations/versions/0005_answer_feedback.py` |
 | Web and operations | React SPA at `/` and `/assets`; public `GET /health` and `/docs`; structured request logs; explicit Alembic migrations; optional local CPU embeddings | No `/api/v1` routes | n/a | `apps/web/src/App.tsx`, `apps/web/src/useKnowledge.ts`, `apps/api/src/pmknowledge/main.py`, `compose.yaml`, `alembic.ini` |
+| Pilot evaluation | Offline synthetic retrieval/answer benchmark; explicit modes, source-span relevance, independent citation checks and unscored workspace/version probes; rollback-only fixtures | No HTTP endpoints; operator CLI | Database operator | `apps/api/src/pmknowledge/evaluation.py`, `apps/api/src/pmknowledge/evaluation_checks.py`, `apps/api/evaluation/pilot-cases.json` |
 
 ## Roles and permissions
 
@@ -346,7 +347,7 @@ against the test database automatically.
 | --- | --- |
 | Auth and access | `test_auth.py`, `test_access.py`, `test_access_migration.py` |
 | Ingestion, chunking, versions | `test_api.py`, `test_chunking.py`, `test_source_reads.py`, `test_source_browsing.py` |
-| Retrieval and evaluation | `test_semantic.py`, `test_fusion.py`, `test_evaluation.py` |
+| Retrieval and evaluation | `test_semantic.py`, `test_fusion.py`, `test_evaluation.py`, `test_pilot_evaluation.py` |
 | Decisions | `test_decisions.py`, `test_decision_extraction.py`, `test_decision_concurrency.py`, `test_decision_migration.py` |
 | Feedback | `test_feedback.py`, `test_feedback_migration.py` |
 | Web serving and health | `test_web.py`, `test_health.py` |
@@ -402,6 +403,12 @@ The suite provisions and removes only synthetic users/workspaces. Optional
 `.context/`.
 
 ## Optional semantic and hybrid mode
+
+Task 010's [pilot evaluation runbook](../README.md#task-010-pilot-evaluation-baseline)
+uses 20 synthetic documents and 40 labelled questions. Keyword-only benchmarking
+requires no model; the recorded baseline includes all three modes using cached weights.
+See [results and limitations](TASK_010.md). Quality metrics do not gate success;
+evidence-integrity and isolation checks do. This is an operator CLI, not a member API.
 
 Keyword retrieval is the default and needs no model. Semantic and hybrid modes need
 the opt-in local CPU embedding model (`BAAI/bge-small-en-v1.5`, 384 dimensions):
