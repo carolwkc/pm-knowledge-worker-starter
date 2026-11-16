@@ -10,6 +10,9 @@ and explicitly submitted Q&A feedback with owner inspection.
 All supplied content is synthetic. Local CPU embeddings are opt-in; keyword mode
 remains the default.
 
+For a single inventory of what is built and step-by-step end-to-end verification
+instructions, see [Capabilities and end-to-end testing](docs/CAPABILITIES_AND_TESTING.md).
+
 ## Run locally
 
 Requires Docker with Compose v2+. Run commands from the repository root:

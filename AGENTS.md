@@ -13,10 +13,10 @@ You are the engineering agent developing PM Knowledge Worker, a team-oriented pr
 
 ## Workflow
 
-1. Read README.md, PLANS.md and relevant docs before coding.
+1. Read README.md, PLANS.md, docs/CAPABILITIES_AND_TESTING.md and relevant docs before coding.
 2. Work on one numbered task at a time; state assumptions briefly.
 3. Prefer a small end-to-end vertical slice to speculative infrastructure.
-4. Keep the repository runnable after each task. Add meaningful automated tests.
+4. Keep the repository runnable after each task. Add meaningful automated tests and update docs/CAPABILITIES_AND_TESTING.md for any capability, endpoint, role or test-workflow change.
 5. Report changed files, run commands, test results, limitations, and next steps.
 6. Do not claim tests passed unless they ran successfully.
 7. Avoid introducing LangGraph, multiple agents, a graph database, queues, or third-party integrations until a task needs them.
@@ -31,7 +31,7 @@ You are the engineering agent developing PM Knowledge Worker, a team-oriented pr
 - Secrets: use environment variables; commit `.env.example`, never `.env` or API keys.
 - Observability: structured logs without sensitive document contents.
 - Testing: unit tests plus one integration test for the source-to-answer flow.
-- Documentation: update README when setup or commands change.
+- Documentation: update README when setup or commands change; keep docs/CAPABILITIES_AND_TESTING.md current. Its endpoint inventory, required sections and README/AGENTS links are enforced by apps/api/tests/test_documentation.py.
 
 ## Security boundaries
 
@@ -46,4 +46,5 @@ You are the engineering agent developing PM Knowledge Worker, a team-oriented pr
 - Feature implements acceptance criteria for its task.
 - Automated tests and lint/type checks (if configured) pass.
 - Local setup commands are documented and reproducible.
+- docs/CAPABILITIES_AND_TESTING.md reflects the task's capabilities and endpoints; `uv run pytest apps/api/tests/test_documentation.py` passes.
 - Security limitations and shortcuts are explicitly recorded.
