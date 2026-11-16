@@ -23,6 +23,9 @@ See the historical [Task 004 verification and limitations](docs/TASK_004.md).
   See [specification](tasks/008-browser-uploads.md) and [verification](docs/TASK_008.md).
 - Task 009: Explicit Q&A feedback with owner-only inspection and original citations.
   See [specification](tasks/009-answer-feedback.md) and [verification](docs/TASK_009.md).
+- Task 010: Expanded synthetic pilot evaluation of retrieval, answer evidence and
+  permission/version integrity, with a recorded three-mode baseline.
+  See [specification](tasks/010-pilot-evaluation.md) and [verification](docs/TASK_010.md).
 - Later tasks: informed by pilot feedback.
 
 ## Milestone 3: Agent Harness
