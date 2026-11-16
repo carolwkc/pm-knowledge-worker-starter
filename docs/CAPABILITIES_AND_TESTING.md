@@ -1,6 +1,6 @@
 # Capabilities and end-to-end testing
 
-Coverage: Tasks 001–011. All supplied content is synthetic.
+Coverage: Tasks 001–012. All supplied content is synthetic.
 
 This document is the single inventory of what PM Knowledge Worker currently does and
 how to verify it end to end. [README.md](../README.md) remains canonical for per-task
@@ -9,7 +9,7 @@ document must be corrected.
 
 ## Purpose and scope
 
-- Applies to the implementation through Tasks 001–011.
+- Applies to the implementation through Tasks 001–012.
 - Lists user-visible capabilities, their API endpoints, minimum workspace role and
   key source files.
 - Provides a repeatable local runbook: Docker Compose quickstart, identity/workspace
@@ -35,6 +35,7 @@ Each row names the endpoint template literally as `` `METHOD /api/v1/path` `` wi
 | Feedback | Submit explicit Helpful/Not helpful feedback with optional reason and comment (idempotent by `submission_id`); owner-only list by rating and detail with saved Q&A context | `POST /api/v1/workspaces/{workspace_id}/feedback`<br>`GET /api/v1/workspaces/{workspace_id}/feedback`<br>`GET /api/v1/workspaces/{workspace_id}/feedback/{feedback_id}` | reader to submit; owner to inspect | `apps/api/src/pmknowledge/feedback.py`, `apps/api/migrations/versions/0005_answer_feedback.py` |
 | Web and operations | React SPA at `/` and `/assets`; public `GET /health` and `/docs`; structured request logs; explicit Alembic migrations; optional local CPU embeddings | No `/api/v1` routes | n/a | `apps/web/src/App.tsx`, `apps/web/src/useKnowledge.ts`, `apps/api/src/pmknowledge/main.py`, `compose.yaml`, `alembic.ini` |
 | Pilot evaluation | Offline synthetic retrieval/answer benchmark; explicit modes and answer policy, paired first-three/selected answers on identical candidates, span relevance, independent citation checks, workspace/version probes, bounded development calibration and held-out release gates; rollback-only fixtures | No HTTP endpoints; operator CLI | Database operator | `apps/api/src/pmknowledge/evaluation.py`, `apps/api/src/pmknowledge/evaluation_checks.py`, `apps/api/src/pmknowledge/selection_benchmark.py` |
+| Human support review | Offline Markdown/JSON review bundle for exact answers and the full corpus, integrity-bound human judgments and completion/uncertainty/support summaries; fresh 72-item cohort, all human judgments pending | No HTTP endpoints; operator CLI (`support_review export`, `support_review summarize`) | Local operator with authorized capture files; capture generation needs database operator access | `apps/api/src/pmknowledge/support_review.py` |
 
 ## Roles and permissions
 
@@ -349,6 +350,7 @@ against the test database automatically.
 | Ingestion, chunking, versions | `test_api.py`, `test_chunking.py`, `test_source_reads.py`, `test_source_browsing.py` |
 | Retrieval and evaluation | `test_semantic.py`, `test_fusion.py`, `test_evaluation.py`, `test_pilot_evaluation.py` |
 | Answer selection and release gates | `test_answer_selection.py`, `test_selection_benchmark.py` |
+| Offline human support review | `test_support_review.py` (corpus freeze, export/summary, tampering, Markdown safety and controlled-encoder integration) |
 | Decisions | `test_decisions.py`, `test_decision_extraction.py`, `test_decision_concurrency.py`, `test_decision_migration.py` |
 | Feedback | `test_feedback.py`, `test_feedback_migration.py` |
 | Web serving and health | `test_web.py`, `test_health.py` |
@@ -446,6 +448,16 @@ the former answer policy; `selected` matches production. The dedicated operator
 calibration/validation commands and fixed artifact paths are documented in
 [Task 011 verification](TASK_011.md). A gate failure exits 1 and does not change
 production defaults. No script automatically promotes a policy.
+
+Task 012 adds an offline human-review workflow without changing answers or policy.
+The [review packet](evaluations/task-012-review/packet.md) has 72 items across the same
+three modes at k=5, including the complete original corpus for conflict inspection.
+The canonical judgments are blank. Copy/export a local bundle, explicitly edit your
+judgments and summarize using the [Task 012 runbook](TASK_012.md). Export and summary
+need no database or model, check provenance/settings/evidence bindings, and exit 0 for
+valid blank/partial reviews or 2 for invalid input. Human verdicts are interpretations;
+fully supported requires quoted support plus no unresolved same-scope/time corpus
+conflict. No production behavior, policy promotion or human finding is implied.
 
 ## Keeping this document current
 

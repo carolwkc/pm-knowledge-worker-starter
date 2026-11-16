@@ -15,6 +15,9 @@ answers and permission/version integrity; it changes no product endpoints or ran
 Task 011 adds conservative quotation selection and paired held-out validation;
 its release gates passed, so the selector is now the `/ask` default. Search is unchanged.
 
+Task 012 adds an offline human review workflow and a fresh 72-item synthetic review
+packet. Human findings remain pending; production answer behavior is unchanged.
+
 For a single inventory of what is built and step-by-step end-to-end verification
 instructions, see [Capabilities and end-to-end testing](docs/CAPABILITIES_AND_TESTING.md).
 
@@ -754,6 +757,34 @@ and positive/negative **answer** abstention with counts. Existing no-evidence ac
 still describes empty **search** results. Integrity-only evaluator exit semantics
 remain unchanged; the separate `selection_benchmark validate` command exits 1 on a
 completed quality gate failure. Neither command changes the production policy.
+
+## Task 012: human review of requested-fact support
+
+Open the [review packet](docs/evaluations/task-012-review/packet.md) for questions,
+actual answers, immutable quotations, the complete source corpus and the human rubric.
+The canonical [judgments](docs/evaluations/task-012-review/judgments.json) are blank:
+no human findings have been inferred or fabricated. Work on your own copy:
+
+```sh
+uv run python -m pmknowledge.support_review export \
+  --cases apps/api/evaluation/task012-review.json \
+  --report docs/evaluations/task-012-review/capture.json \
+  --output-dir .context/task012-review
+cp .context/task012-review/judgments.json .context/task012-my-judgments.json
+
+# After explicitly editing your copy (blank/partial reviews are also valid):
+uv run python -m pmknowledge.support_review summarize \
+  --bundle .context/task012-review --judgments .context/task012-my-judgments.json
+```
+
+These commands need no database or model. Export refuses existing output directories;
+summary rechecks original evidence, settings, packet/manifest and judgment bindings.
+An unresolved same-scope/time corpus contradiction prevents a fully supported verdict,
+even if the response omits one side. Human judgments remain interpretations, not
+knowledge promotion or truth. Counts include pending and uncertain items; rates exclude
+pending, uncertain and abstaining items. Exit 0 means valid input, never quality passed;
+invalid operations exit 2. See [Task 012 verification and runbook](docs/TASK_012.md)
+for fields, evidence references, capture reproduction and limitations.
 
 ## Tests and checks
 

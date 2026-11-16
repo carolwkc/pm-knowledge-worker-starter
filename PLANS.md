@@ -29,6 +29,10 @@ See the historical [Task 004 verification and limitations](docs/TASK_004.md).
 - Task 011: Conservative answer evidence selection, frozen development calibration
   and paired held-out validation; release gates passed at k=5 and k=10.
   See [specification](tasks/011-answer-evidence-selection.md) and [verification](docs/TASK_011.md).
+- Task 012: Offline human review of requested-fact support, with a fresh frozen
+  synthetic cohort, integrity-bound Markdown/JSON review bundle and judgment summaries.
+  Review-ready materials are delivered; human findings remain pending.
+  See [specification](tasks/012-human-support-review.md) and [verification](docs/TASK_012.md).
 - Later tasks: informed by pilot feedback.
 
 ## Milestone 3: Agent Harness
