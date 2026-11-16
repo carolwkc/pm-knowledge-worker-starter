@@ -4,6 +4,7 @@ import argparse
 import json
 import platform
 import sys
+from dataclasses import asdict
 from hashlib import sha256
 from importlib.metadata import version
 from io import BytesIO
@@ -15,6 +16,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session
 
+from pmknowledge.answer_selection import (
+    DEFAULT_ANSWER_POLICY,
+    POLICY_ID,
+    THRESHOLDS,
+    AnswerPolicy,
+    english_lexemes,
+    select_evidence,
+)
 from pmknowledge.auth import Principal, create_user
 from pmknowledge.config import Settings
 from pmknowledge.documents import ingest
@@ -26,7 +35,7 @@ from pmknowledge.evaluation_checks import (
     isolation_probes,
 )
 from pmknowledge.models import Workspace, WorkspaceMembership
-from pmknowledge.retrieval import ask, search
+from pmknowledge.retrieval import ask, compose_hits, retrieve_candidates
 from pmknowledge.schemas import Citation, QueryText, RetrievalMode, ShortText
 
 
@@ -126,7 +135,10 @@ def ratio(numerator: float, denominator: int) -> dict[str, float | None]:
 def answer_metrics(rows: list[dict[str, int | None]]) -> dict[str, Any]:
     labelled = [row for row in rows if row["expected"] is not None]
     positives = [row for row in labelled if row["expected"]]
+    negatives = [row for row in labelled if row["expected"] == 0]
     return {
+        "negative_abstention": ratio(sum(row["emitted"] == 0 for row in negatives), len(negatives)),
+        "positive_abstention": ratio(sum(row["emitted"] == 0 for row in positives), len(positives)),
         "citation_integrity": ratio(
             sum(row["valid"] or 0 for row in rows), sum(row["emitted"] or 0 for row in rows)
         ),
@@ -171,12 +183,14 @@ def evaluate(
     min_score: float = 0.6,
     *,
     selected_modes: tuple[RetrievalMode, ...] = ("keyword", "semantic", "hybrid"),
+    answer_policy: AnswerPolicy = DEFAULT_ANSWER_POLICY,
 ) -> dict[str, Any]:
     if (
         not 1 <= k <= 20
         or not selected_modes
         or any(mode not in ("keyword", "semantic", "hybrid") for mode in selected_modes)
         or len(set(selected_modes)) != len(selected_modes)
+        or answer_policy not in ("legacy", "selected")
     ):
         raise ValueError("Require k=1..20 and distinct supported modes")
     savepoint = session.begin_nested()
@@ -212,8 +226,9 @@ def evaluate(
         modes: dict[str, Any] = {}
         for mode in selected_modes:
             rankings, records, counts = [], [], []
+            policy_counts: dict[str, list[dict[str, int | None]]] = {"legacy": [], "selected": []}
             for case in dataset.cases:
-                hits = search(
+                batch = retrieve_candidates(
                     session,
                     workspace.id,
                     case.query,
@@ -223,6 +238,23 @@ def evaluate(
                     embedder=embedder,
                     min_score=min_score,
                 )
+                hits = batch.hits
+                lexemes = english_lexemes(session, [case.query, *[hit.excerpt for hit in hits]])
+                terms = {hit.chunk_id: terms for hit, terms in zip(hits, lexemes[1:], strict=True)}
+                paired = {
+                    "legacy": compose_hits(hits[:3]),
+                    "selected": compose_hits(
+                        select_evidence(
+                            hits,
+                            lexemes[0],
+                            terms,
+                            batch.cosine_scores,
+                            mode,
+                            min_score,
+                            THRESHOLDS[mode],
+                        )
+                    ),
+                }
                 answer = ask(
                     session,
                     workspace.id,
@@ -232,8 +264,11 @@ def evaluate(
                     mode=mode,
                     embedder=embedder,
                     min_score=min_score,
+                    answer_policy=answer_policy,
                 )
                 failures, citation_errors = audit_answer(session, workspace.id, answer, principal)
+                if answer != paired[answer_policy]:
+                    failures.append("service_answer_differs_from_paired_candidates")
                 for hit in hits:
                     failures.extend(audit_evidence(session, workspace.id, hit, principal))
                     if str(hit.source_document_id) in invalid_sources:
@@ -271,6 +306,32 @@ def evaluate(
                     else None,
                 }
                 counts.append(count)
+                for policy, paired_answer in paired.items():
+                    pair_errors, pair_citations = audit_answer(
+                        session, workspace.id, paired_answer, principal
+                    )
+                    failures.extend(f"{policy}:{error}" for error in pair_errors)
+                    pair_valid = []
+                    for citation, errors in zip(paired_answer.sources, pair_citations, strict=True):
+                        if str(citation.source_document_id) in invalid_sources:
+                            errors.append("fixture_mismatch")
+                        failures.extend(f"{policy}:{error}" for error in errors)
+                        if not errors:
+                            pair_valid.append(citation)
+                    pair_relevant, pair_covered = (
+                        (None, None)
+                        if case.evidence_spans is None
+                        else span_coverage(case.evidence_spans, pair_valid, labels)
+                    )
+                    policy_counts[policy].append(
+                        {
+                            "emitted": len(paired_answer.sources),
+                            "valid": len(pair_valid),
+                            "relevant": pair_relevant,
+                            "covered": pair_covered,
+                            "expected": count["expected"],
+                        }
+                    )
                 records.append(
                     {
                         "id": case.id,
@@ -280,14 +341,33 @@ def evaluate(
                         "relevant": sorted(case.relevant_document_ids),
                         "search_hits": [hit.model_dump(mode="json") for hit in hits],
                         "answer": answer.model_dump(mode="json"),
+                        "policy_answers": {
+                            key: value.model_dump(mode="json") for key, value in paired.items()
+                        },
+                        "selection_inputs": {
+                            "question_lexemes": sorted(lexemes[0]),
+                            "excerpt_lexemes": {
+                                str(key): sorted(value) for key, value in terms.items()
+                            },
+                            "cosine_scores": {
+                                str(hit.chunk_id): batch.cosine_scores[hit.chunk_id]
+                                for hit in hits
+                                if hit.chunk_id in batch.cosine_scores
+                            },
+                        },
                         "evidence_counts": count,
                         "failures": failures,
                     }
                 )
-            probes = isolation_probes(session, mode, embedder, min_score)
+            probes = isolation_probes(
+                session, mode, embedder, min_score, answer_policy=answer_policy
+            )
             modes[mode] = {
                 **retrieval_metrics(rankings, [c.relevant_document_ids for c in dataset.cases], k),
                 "answer_metrics": answer_metrics(counts),
+                "policy_metrics": {
+                    key: answer_metrics(value) for key, value in policy_counts.items()
+                },
                 "cases": records,
                 "probes": probes,
                 "passed": not fixture_failures
@@ -295,7 +375,9 @@ def evaluate(
                 and probes["passed"],
             }
         return {
-            "report_version": 2,
+            "report_version": 3,
+            "answer_policy": answer_policy,
+            "document_labels": labels,
             "fixture_failures": fixture_failures,
             "passed": all(result["passed"] for result in modes.values()),
             "model_id": embedder.model_id if embedder is not None else None,
@@ -307,6 +389,10 @@ def evaluate(
             "negative_queries": sum(not case.relevant_document_ids for case in dataset.cases),
             "modes": modes,
             "settings": {
+                "answer_selection": {
+                    "policy_id": POLICY_ID,
+                    "thresholds": {mode: asdict(value) for mode, value in THRESHOLDS.items()},
+                },
                 "answer_max_citations": 3,
                 "hybrid_candidates_per_retriever": 20,
                 "rrf_k": 60,
@@ -321,6 +407,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cases", type=Path, default=Path("apps/api/evaluation/cases.json"))
     parser.add_argument("--k", type=int, choices=range(1, 21), default=3)
+    parser.add_argument(
+        "--answer-policy", choices=("legacy", "selected"), default=DEFAULT_ANSWER_POLICY
+    )
     parser.add_argument(
         "--modes",
         nargs="+",
@@ -347,6 +436,7 @@ def main() -> None:
                 args.k,
                 settings.semantic_min_score,
                 selected_modes=tuple(args.modes),
+                answer_policy=args.answer_policy,
             )
         result["cases_sha256"] = sha256(raw_cases).hexdigest()
         result["fastembed_version"] = version("fastembed")

@@ -1,6 +1,6 @@
 # Capabilities and end-to-end testing
 
-Coverage: Tasks 001–010. All supplied content is synthetic.
+Coverage: Tasks 001–011. All supplied content is synthetic.
 
 This document is the single inventory of what PM Knowledge Worker currently does and
 how to verify it end to end. [README.md](../README.md) remains canonical for per-task
@@ -9,7 +9,7 @@ document must be corrected.
 
 ## Purpose and scope
 
-- Applies to the implementation through Tasks 001–010.
+- Applies to the implementation through Tasks 001–011.
 - Lists user-visible capabilities, their API endpoints, minimum workspace role and
   key source files.
 - Provides a repeatable local runbook: Docker Compose quickstart, identity/workspace
@@ -30,11 +30,11 @@ Each row names the endpoint template literally as `` `METHOD /api/v1/path` `` wi
 | Identity and workspaces | Resolve the current user; list joined workspaces with role; create a workspace (caller becomes its first owner) | `GET /api/v1/me`<br>`GET /api/v1/workspaces`<br>`POST /api/v1/workspaces` | Any authenticated user | `apps/api/src/pmknowledge/auth.py`, `apps/api/src/pmknowledge/access.py`, `apps/api/src/pmknowledge/main.py` |
 | Memberships | List members; create/update a membership; remove a membership. The last owner cannot be removed or demoted | `GET /api/v1/workspaces/{workspace_id}/members`<br>`PUT /api/v1/workspaces/{workspace_id}/members/{user_id}`<br>`DELETE /api/v1/workspaces/{workspace_id}/members/{user_id}` | owner | `apps/api/src/pmknowledge/access.py` |
 | Ingestion and provenance | Upload a new Markdown/text source; append an immutable version; deduplicate identical bytes; list sources with title filter; list versions; read an exact version's original text, SHA-256, offsets and computed freshness | `POST /api/v1/workspaces/{workspace_id}/sources`<br>`GET /api/v1/workspaces/{workspace_id}/sources`<br>`POST /api/v1/workspaces/{workspace_id}/sources/{source_id}/versions`<br>`GET /api/v1/workspaces/{workspace_id}/sources/{source_id}/versions`<br>`GET /api/v1/workspaces/{workspace_id}/sources/{source_id}/versions/{version_id}` | reader for reads; editor for uploads | `apps/api/src/pmknowledge/documents.py`, `apps/api/src/pmknowledge/chunking.py`, `apps/api/src/pmknowledge/models.py`, `apps/api/migrations/versions/0001_knowledge_foundation.py` |
-| Search and Q&A | Keyword, semantic or hybrid retrieval (workspace-filtered before ranking); deterministic extractive answer quoting at most three chunks, or `insufficient_evidence` | `GET /api/v1/workspaces/{workspace_id}/search`<br>`POST /api/v1/workspaces/{workspace_id}/ask` | reader | `apps/api/src/pmknowledge/retrieval.py`, `apps/api/src/pmknowledge/ranking.py`, `apps/api/src/pmknowledge/embeddings.py`, `apps/api/migrations/versions/0002_chunk_embeddings.py` |
+| Search and Q&A | Keyword, semantic or hybrid retrieval (workspace-filtered before ranking); conservative lexical/cosine selection, exact-text deduplication and at most three complete quoted chunks, or `insufficient_evidence`. Search ranking is unchanged | `GET /api/v1/workspaces/{workspace_id}/search`<br>`POST /api/v1/workspaces/{workspace_id}/ask` | reader | `apps/api/src/pmknowledge/retrieval.py`, `apps/api/src/pmknowledge/answer_selection.py`, `apps/api/src/pmknowledge/embeddings.py` |
 | Decisions | Generate deterministic `decision-marker-v1` proposals from a latest version; browse the queue; inspect a proposal; approve/reject as owner; browse and read immutable approved decisions | `POST /api/v1/workspaces/{workspace_id}/sources/{source_id}/versions/{version_id}/proposals`<br>`GET /api/v1/workspaces/{workspace_id}/proposals`<br>`GET /api/v1/workspaces/{workspace_id}/proposals/{proposal_id}`<br>`POST /api/v1/workspaces/{workspace_id}/proposals/{proposal_id}/review`<br>`GET /api/v1/workspaces/{workspace_id}/decisions`<br>`GET /api/v1/workspaces/{workspace_id}/decisions/{decision_id}` | editor for proposals; owner for review; reader for decisions | `apps/api/src/pmknowledge/decisions.py`, `apps/api/migrations/versions/0004_decision_review.py` |
 | Feedback | Submit explicit Helpful/Not helpful feedback with optional reason and comment (idempotent by `submission_id`); owner-only list by rating and detail with saved Q&A context | `POST /api/v1/workspaces/{workspace_id}/feedback`<br>`GET /api/v1/workspaces/{workspace_id}/feedback`<br>`GET /api/v1/workspaces/{workspace_id}/feedback/{feedback_id}` | reader to submit; owner to inspect | `apps/api/src/pmknowledge/feedback.py`, `apps/api/migrations/versions/0005_answer_feedback.py` |
 | Web and operations | React SPA at `/` and `/assets`; public `GET /health` and `/docs`; structured request logs; explicit Alembic migrations; optional local CPU embeddings | No `/api/v1` routes | n/a | `apps/web/src/App.tsx`, `apps/web/src/useKnowledge.ts`, `apps/api/src/pmknowledge/main.py`, `compose.yaml`, `alembic.ini` |
-| Pilot evaluation | Offline synthetic retrieval/answer benchmark; explicit modes, source-span relevance, independent citation checks and unscored workspace/version probes; rollback-only fixtures | No HTTP endpoints; operator CLI | Database operator | `apps/api/src/pmknowledge/evaluation.py`, `apps/api/src/pmknowledge/evaluation_checks.py`, `apps/api/evaluation/pilot-cases.json` |
+| Pilot evaluation | Offline synthetic retrieval/answer benchmark; explicit modes and answer policy, paired first-three/selected answers on identical candidates, span relevance, independent citation checks, workspace/version probes, bounded development calibration and held-out release gates; rollback-only fixtures | No HTTP endpoints; operator CLI | Database operator | `apps/api/src/pmknowledge/evaluation.py`, `apps/api/src/pmknowledge/evaluation_checks.py`, `apps/api/src/pmknowledge/selection_benchmark.py` |
 
 ## Roles and permissions
 
@@ -348,6 +348,7 @@ against the test database automatically.
 | Auth and access | `test_auth.py`, `test_access.py`, `test_access_migration.py` |
 | Ingestion, chunking, versions | `test_api.py`, `test_chunking.py`, `test_source_reads.py`, `test_source_browsing.py` |
 | Retrieval and evaluation | `test_semantic.py`, `test_fusion.py`, `test_evaluation.py`, `test_pilot_evaluation.py` |
+| Answer selection and release gates | `test_answer_selection.py`, `test_selection_benchmark.py` |
 | Decisions | `test_decisions.py`, `test_decision_extraction.py`, `test_decision_concurrency.py`, `test_decision_migration.py` |
 | Feedback | `test_feedback.py`, `test_feedback_migration.py` |
 | Web serving and health | `test_web.py`, `test_health.py` |
@@ -429,6 +430,22 @@ Then pass `mode=semantic` or `mode=hybrid` to search/ask. When embeddings are
 disabled or weights are missing, these modes return `503` with a clear message; there
 is no silent fallback to keyword. Semantic mode is English-only and truncates chunks
 at 512 tokens. See `docs/TASK_002.md` for recorded evaluation results and limits.
+
+Task 011 enables a frozen selector for `/ask` after passing held-out gates at both
+candidate budgets. It preserves exact chunks and at most three citations; `limit`
+still bounds candidates. Empty English query lexemes produce insufficient evidence.
+Keyword selection requires positive overlap (threshold 0); semantic/hybrid can also
+qualify with raw cosine at least 0.65 and the configured floor. Lexical thresholds
+are 0.30 for semantic and 0.80 for hybrid. Duplicate excerpt strings appear once.
+Related quotations may still omit the requested fact; `grounded` is not proof of
+answerability. Search, source navigation, feedback formats and roles are unchanged.
+
+Evaluation report version 3 keeps the old search metrics and adds answer abstention,
+paired policies and captured selection inputs. `--answer-policy legacy` reproduces
+the former answer policy; `selected` matches production. The dedicated operator
+calibration/validation commands and fixed artifact paths are documented in
+[Task 011 verification](TASK_011.md). A gate failure exits 1 and does not change
+production defaults. No script automatically promotes a policy.
 
 ## Keeping this document current
 

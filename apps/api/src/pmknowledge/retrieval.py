@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from math import isfinite
 from uuid import UUID
 
@@ -5,6 +6,13 @@ from sqlalchemy import exists, select, text
 from sqlalchemy.orm import Session, aliased
 
 from pmknowledge.access import require_workspace_access
+from pmknowledge.answer_selection import (
+    DEFAULT_ANSWER_POLICY,
+    THRESHOLDS,
+    AnswerPolicy,
+    english_lexemes,
+    select_evidence,
+)
 from pmknowledge.auth import Principal
 from pmknowledge.embeddings import DIMENSIONS, Embedder, EmbeddingUnavailable
 from pmknowledge.models import (
@@ -113,6 +121,44 @@ def semantic_search(
     return [SearchHit.model_validate(row) for row in session.execute(statement).mappings()]
 
 
+@dataclass(frozen=True)
+class CandidateBatch:
+    hits: list[SearchHit]
+    cosine_scores: dict[UUID, float]
+
+
+def retrieve_candidates(
+    session: Session,
+    workspace_id: UUID,
+    query: str,
+    limit: int,
+    *,
+    principal: Principal,
+    mode: RetrievalMode = "keyword",
+    embedder: Embedder | None = None,
+    min_score: float = 0.6,
+) -> CandidateBatch:
+    require_workspace_access(session, workspace_id, principal)
+    if mode == "keyword":
+        return CandidateBatch(
+            keyword_search(session, workspace_id, query, limit, principal=principal), {}
+        )
+    if embedder is None:
+        raise EmbeddingUnavailable("Embeddings disabled")
+    candidates = 20 if mode == "hybrid" else limit
+    semantic = semantic_search(
+        session, workspace_id, query, candidates, embedder, min_score, principal=principal
+    )
+    if mode == "semantic":
+        return CandidateBatch(semantic, {hit.chunk_id: hit.score for hit in semantic})
+    fused = reciprocal_rank_fusion(
+        keyword_search(session, workspace_id, query, candidates, principal=principal),
+        semantic,
+        limit,
+    )
+    return CandidateBatch(fused, {hit.chunk_id: hit.score for hit in semantic})
+
+
 def search(
     session: Session,
     workspace_id: UUID,
@@ -124,22 +170,16 @@ def search(
     embedder: Embedder | None = None,
     min_score: float = 0.6,
 ) -> list[SearchHit]:
-    require_workspace_access(session, workspace_id, principal)
-    if mode == "keyword":
-        return keyword_search(session, workspace_id, query, limit, principal=principal)
-    if embedder is None:
-        raise EmbeddingUnavailable("Embeddings disabled")
-    candidates = 20 if mode == "hybrid" else limit
-    semantic = semantic_search(
-        session, workspace_id, query, candidates, embedder, min_score, principal=principal
-    )
-    if mode == "semantic":
-        return semantic
-    return reciprocal_rank_fusion(
-        keyword_search(session, workspace_id, query, candidates, principal=principal),
-        semantic,
+    return retrieve_candidates(
+        session,
+        workspace_id,
+        query,
         limit,
-    )
+        principal=principal,
+        mode=mode,
+        embedder=embedder,
+        min_score=min_score,
+    ).hits
 
 
 def ask(
@@ -152,8 +192,9 @@ def ask(
     mode: RetrievalMode = "keyword",
     embedder: Embedder | None = None,
     min_score: float = 0.6,
+    answer_policy: AnswerPolicy = DEFAULT_ANSWER_POLICY,
 ) -> AnswerRead:
-    hits = search(
+    batch = retrieve_candidates(
         session,
         workspace_id,
         question,
@@ -162,7 +203,23 @@ def ask(
         mode=mode,
         embedder=embedder,
         min_score=min_score,
-    )[:3]
+    )
+    hits = batch.hits[:3]
+    if answer_policy == "selected":
+        lexemes = english_lexemes(session, [question, *[hit.excerpt for hit in batch.hits]])
+        hits = select_evidence(
+            batch.hits,
+            lexemes[0],
+            {hit.chunk_id: terms for hit, terms in zip(batch.hits, lexemes[1:], strict=True)},
+            batch.cosine_scores,
+            mode,
+            min_score,
+            THRESHOLDS[mode],
+        )
+    return compose_hits(hits)
+
+
+def compose_hits(hits: list[SearchHit]) -> AnswerRead:
     return compose_answer(
         [
             Citation(**hit.model_dump(exclude={"score"}), citation=str(index))

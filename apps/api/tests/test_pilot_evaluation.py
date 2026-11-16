@@ -202,6 +202,51 @@ def test_legacy_dataset_has_null_span_metrics(database):
     assert report["modes"]["keyword"]["answer_metrics"]["evidence_precision"]["value"] is None
 
 
+def test_selected_report_pairs_same_candidates_with_legacy_and_records_policy(database):
+    from pmknowledge.answer_selection import THRESHOLDS
+    from pmknowledge.selection_benchmark import replay_metrics
+
+    with Session(database) as session:
+        report = evaluate(
+            session, dataset(), None, k=5, selected_modes=("keyword",), answer_policy="selected"
+        )
+    assert report["report_version"] == 3
+    assert report["answer_policy"] == "selected"
+    assert report["settings"]["answer_selection"]["policy_id"]
+    mode = report["modes"]["keyword"]
+    assert mode["answer_metrics"] == mode["policy_metrics"]["selected"]
+    for case in mode["cases"]:
+        assert case["answer"] == case["policy_answers"]["selected"]
+        assert case["policy_answers"]["legacy"]["sources"] == [
+            {**hit, "citation": str(i)}
+            for i, hit in enumerate(
+                [{k: v for k, v in h.items() if k != "score"} for h in case["search_hits"][:3]], 1
+            )
+        ]
+        assert "question_lexemes" in case["selection_inputs"]
+        assert len(case["search_hits"]) <= 5
+    assert report["passed"]
+    assert (
+        replay_metrics(report, dataset(), "keyword", THRESHOLDS["keyword"])
+        == mode["answer_metrics"]
+    )
+
+
+def test_selected_keyword_cli_does_not_load_model(database, monkeypatch, tmp_path, capsys):
+    import pmknowledge.evaluation as module
+
+    path = tmp_path / "synthetic.json"
+    path.write_text(dataset().model_dump_json())
+    monkeypatch.setenv("DATABASE_URL", database.url.render_as_string(hide_password=False))
+    monkeypatch.setattr(
+        "sys.argv",
+        ["evaluation", "--cases", str(path), "--modes", "keyword", "--answer-policy", "selected"],
+    )
+    monkeypatch.setattr(module, "LocalEmbedder", lambda _: pytest.fail("unexpected model"))
+    module.main()
+    assert json.loads(capsys.readouterr().out)["answer_policy"] == "selected"
+
+
 @pytest.mark.parametrize("failure", ["model", "integrity", "configuration"])
 def test_cli_failure_status_and_redacted_diagnostics(
     database, monkeypatch, tmp_path, capsys, failure

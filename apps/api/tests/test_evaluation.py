@@ -85,6 +85,8 @@ def test_evidence_metrics_include_false_positive_negatives_and_positive_abstenti
     assert metrics["evidence_precision"] == {"value": 1 / 3, "numerator": 1, "denominator": 3}
     assert metrics["evidence_recall"] == {"value": 0.5, "numerator": 1.0, "denominator": 2}
     assert metrics["citation_integrity"]["value"] == 1
+    assert metrics["negative_abstention"] == {"value": 0, "numerator": 0, "denominator": 1}
+    assert metrics["positive_abstention"] == {"value": 0.5, "numerator": 1, "denominator": 2}
 
 
 def test_empty_denominators_and_legacy_support_labels_are_null():
@@ -96,6 +98,8 @@ def test_empty_denominators_and_legacy_support_labels_are_null():
     )
     assert metrics["evidence_precision"]["value"] is None
     assert metrics["evidence_recall"]["value"] is None
+    assert metrics["negative_abstention"]["value"] is None
+    assert metrics["positive_abstention"]["value"] is None
 
 
 def test_pilot_corpus_has_authored_spans_and_balanced_cohorts():
