@@ -1,0 +1,14 @@
+{
+  "dataset": "apps/api/evaluation/task012-review.json",
+  "sha256": "7308d680dc20f235f26fd9d3694d01c0ea17a9a58a1b499cd90790043116f450",
+  "documents": 12,
+  "questions": 24,
+  "categories": {
+    "direct_support": 6,
+    "multi_source": 6,
+    "missing_fact": 6,
+    "conflict_resolution": 6
+  },
+  "purpose": "Fresh authored synthetic human-review cohort; not calibrated or human adjudicated.",
+  "freeze_stage": "Authored and hashed before the first Task 012 evaluation capture; no policy tuning."
+}

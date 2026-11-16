@@ -1,0 +1,439 @@
+{
+  "schema_version": 1,
+  "manifest_sha256": "f3d139fabc7e8a5adb4a909528d4b0da93258a747cc3a494c59498dabaffe937",
+  "reviewer_id": "",
+  "items": [
+    {
+      "item_id": "a37f1bbfbcf5bdc24a5c6d1234745732f93b956e5f9d0dc8574344c08de51519",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "8259b7f1fce13c250dea84e7bd34a56e21cad3d1574b5453adca104d73075187",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "487193401799591344a460592bcd4046d7b7c3e85b46758beb1602dd6182f348",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "59ad05aef99ceb391145654a492115e7b4b16261fc0a3a9dc56097883ac1f24a",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "3e5c40503c4f77c31c8578bc09a6315acad4fb04c5bb3e53d491f41c886cb0fb",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "c49e715327468314b7c85507582da715e80a48b263f5048b98f80c4ab10c0d26",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "04dd295edb58ee725a13a9456698c6d863c9062ad8b44b43406a2188bd3cce2c",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "e506ffb65ffc8462326eb6bc473d063c3a5215c7a091ff481674d23ceebc1fd1",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "5f9e68ac9a31549510d39d5624b5005b03b6f217c5b547ce3da8f169a7821ff1",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "bdd202abb1060518fc6c55bad8907ebe511e584030add4837167e2908b264c02",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "472acbe24b2105ecb1c18e95d26839bafb3a7f6034293aa2f7c067388fdb2851",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "c9e78e35873d804ac8ec118f0fc484d8050fcdc67ffc691e0fc50ba2c182e34a",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "2f90d1b5dfacf43c107cdd3dbf290af1f61907342ca3c027bae2968f12cc442d",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "5d113bfc06bd4b19fe50506fb0e19081bd1bc8e91fd01680acf69d4837e32091",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "e7261ee3ebfc2099f0f75904f6a652973c4917a1e41c7bff2a14c5dab54f3e06",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "2c563a9eef622d63b811da879b8fd5765938826e9eb8d6ffc75b7b1fd11f7f1c",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "a36b34a3570d316ceae70e9d8b7fab9d473a12fa5166997b4194eece33e9a75b",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "a25bd5b0fdbfa46b2720a54d444c8b1e519e413e33b912cbdd6abf3bf5b58198",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "50e0516418f4ce0ed21c713033015645547c06b08f26d7d1afc534aec26a63a7",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "80c8205ae214aef0363c0267b0332f9cb936f38ce668cedd329addcf9d79a5cb",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "2ed045e666e34bea4504764442c327a58040bba914054d35f25e13d7c03519d2",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "9db6b9ee0d4ff5b0ac574b2654faf313c630e09d4952307ed9099401b69950c5",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "d90aed83b682d0124fd8a0c473713c5a036159c88414d976ef683df5858538be",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "80dcf934e49726cb8eb40963c11e55a839bb5fb3d5a77612de1dbc66800a1608",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "b3aa3370dfa47703f724814aa3d1119936e7136bcaff14ade47751fd267f7658",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "69dc93197b8ecce5b4680878b1b71590cb8c2e6a43fa85caef639a31c4404299",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "5282bfd1e39db3617e6625d11842ab5c313b2592274c9ec6206f3f20863a4b77",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "35abd4994d7cca216ee2c95fbc070d4ce454b1fe9760ed3b7a0b4c1b3bd156fa",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "230fa5f716b1331368717f5cbc4431e1c54d30e847f3ceb235c94456afd5aff6",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "72f357c784d63379dbf7be7d30cf27f51cadb743a8699eb8f9b58c3e60d9bac2",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "6054045cde41034fc7758255e1fd157c7b98b545db174eec381589c390160926",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "1456b2668461a6d041e7b6340c5e78f08c5dadad0dcd20f9f08f941c31f19db9",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "423a200042bbb8d04beb3c9bc128a78fb438c11dd62bd89da004a4787f01a301",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "a8ada7a7a6b897f3370a610dc2e8bef96fac9056a4bb7e286942b6a2cf026d28",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "8b657eef8030905429189f77f9be72d3f7454d292a45016cb1e8fad9ed6fe16f",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "3c48eeeed307cf93812ad060d59fd496e7a4a707d6e9d96b8ab108429b2e5e9f",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "2cd6fd23ae8eeef8e84acbd7ab17d89ad84eede281c0aa56a7278554eea51de0",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "1045aa3a2ee4aeaffbe0c1f1b0623ce9312bd0110c062783fd9fbf97222d703f",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "b931b006849249922a437df91ff0d28aa8464ddace1b249e048c411ac5230d36",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "c413687784584a64d0e7bf087cbcbbde602e14ec6783da48374d3dcdbcb56ebf",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "220642b7535bbc5333e8c80bb903eda26ff517fa28725f2e7ea7a66a43ad9c21",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "d32013c37bc9af8b25b786d4e1f545bd050991bfdfc4673deccc26422cce1d2a",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "a1b72658b2500590a3083b1a20f2bac36edbdaa484d302e877d5c445e3b3e82c",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "596b71718260ceb6ba3ac3667744ebbf622275995988a1351bffba78e85bbd3d",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "94987a3dac337fd47a8f7ec3c0d7ce0df03651788ea92a36b2c81e818fb9eb2f",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "e735b7c02dafee5ee07f5f40534428e7af1551f420efc77ff1a4f2f65c836ce9",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "c0b7172e25a6b9ff11bf8bb9d15dd3da86bd0efddae64df8eec8749a00a4436c",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "22aa1cc3a02f00adcf44655046eba0e0f15a2f435edcb6dde5a801e0e0d4dd20",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "c8447b18f4f1f7a5dfd08db55d7a25adfb1ede4b438976097a06d395fec5246d",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "10dbe5412adbb0fbb570d2ff49c5d10808e08d52f87bb977207ee822951e7fb1",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "03f863eb0ddbc17367fa9ea2db149683faed37a8e37177b5714680a4c4b494d4",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "c7140256a7aab72618dece32e5452f86aa667eb2c2e40ef78635fa30dd2ba23e",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "2b4c1943e82d0d3f3546da930bc1122ff05310b566db151cde66f383c0ec074c",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "9bd15f4ecf561cff531d08d8001c4f5cb3d7b2e1fd5dd3f62711617053204782",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "09e583a99d7c688bd27a89fb521e17451a5b0b5d324b3fb10b9187f477cce77e",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "e0e6b4b155cd2f99cfdcb0a824e2774f92241f2ab85c287d3b53f25cbf9e870d",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "6abeaf50118cce6e31bec538ab9b331a4ed13b553ab6cf63c68e5d3ee6b41c1c",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "22a647a4c8c67389b586998623683b3e0a912a31a513d10694d357ade1b22031",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "bbc142ea42ec3f7fa575729ffddcdf04e6c6e03d28d82f38f69045e78fe29789",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "b1315554fe57e98a1812ff1a1581161de8c1ce119c43d722160a06aa2a7ae29d",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "24404890206ae0c1832563c5167eaf379c0bef39c404588fbdfbf5af12dc7630",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "5c803ad82926de2988dd5f9c7ac0dbaf995c819c3fde3e59e2973c3cab677df8",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "d807bd61028d6da14f2af19fe6c8bc379ecba8b7abb59c78214a259d391b4ec0",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "a93d45c4902438da8edf306e3c4de19fa92fa53b4969624d9f4406f39dcd1cb5",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "a8e311858aa1f5e54ac4d528466656b56166fd9f7d92e7d9fa83730309cd9ab4",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "76a348fca7922dcc95d59e7c0bb195220bb9d83f533b4262073edc3f249b1e3c",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "a3ad1a54ff18ff3d36a2235d6b205e17f42e365a8a2188600f035e97935c3dbd",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "81e13cf8d31ac7dfc5a54a76de555d337128f45b28579ba48157c4644c0943d7",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "7ec8a031cb646c73ad8a5c2d9cb7efef14e1990009a861c8b99d490d72030754",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "7370bdb665d0a82a1a10089430e2c26960060d6b8a4e740e0591fdbfbcdbe971",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "048e0e80f3c9838668487196c7ba6421c09185a2634a815a933b3a54a3f1081b",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    },
+    {
+      "item_id": "62dbbbd05eada89d7d0c74e7a2d9696d933698caf3adf4cd676fe6d988763804",
+      "verdict": null,
+      "rationale": "",
+      "evidence_spans": []
+    }
+  ]
+}
