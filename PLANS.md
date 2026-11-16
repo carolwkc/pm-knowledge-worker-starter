@@ -26,6 +26,9 @@ See the historical [Task 004 verification and limitations](docs/TASK_004.md).
 - Task 010: Expanded synthetic pilot evaluation of retrieval, answer evidence and
   permission/version integrity, with a recorded three-mode baseline.
   See [specification](tasks/010-pilot-evaluation.md) and [verification](docs/TASK_010.md).
+- Task 011: Conservative answer evidence selection, frozen development calibration
+  and paired held-out validation; release gates passed at k=5 and k=10.
+  See [specification](tasks/011-answer-evidence-selection.md) and [verification](docs/TASK_011.md).
 - Later tasks: informed by pilot feedback.
 
 ## Milestone 3: Agent Harness

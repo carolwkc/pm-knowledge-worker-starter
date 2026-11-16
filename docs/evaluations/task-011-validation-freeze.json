@@ -1,0 +1,7 @@
+{
+  "dataset": "apps/api/evaluation/task011-validation.json",
+  "sha256": "76c75a7251abd05c1893dc2cb1fc6643a9d92e0834d5a0d87a0f6339baaeb177",
+  "documents": 20,
+  "questions": 40,
+  "purpose": "Frozen before calibration; never used to select thresholds."
+}

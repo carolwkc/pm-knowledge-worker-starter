@@ -145,6 +145,22 @@ retain their frozen submission and require an explicit retry. Feedback snapshots
 persist until workspace deletion and do not depend on the continued existence of
 original source rows. Original-version navigation still enforces current membership.
 
+### Task 011 conservative quotation selection
+
+Search retains its existing candidate ranking and public score contract. An internal
+candidate batch also carries raw semantic cosine scores, independently of hybrid
+fusion scores. `/ask` uses PostgreSQL English lexemes and frozen mode thresholds to
+select candidates, deduplicates exact excerpt strings in rank order and quotes at
+most three complete chunks. Permission checks still precede query inference, with
+workspace/latest-version SQL constraints before ranking. Keyword requests load no model.
+
+The selector passed paired validation at k=5 and k=10 and is the production default.
+The operator evaluator can still select the legacy first-three control. It audits
+both policies on identical captured candidates and checks that the real ask service
+matches its corresponding paired answer. Feedback continues to validate original
+evidence and quotation formatting, without rerunning relevance selection. No schema,
+new model, cache, external inference or agent harness is introduced.
+
 ## Ingestion flow
 
 Authenticate user → verify editor/owner membership → validate file & workspace scope → save source metadata → parse text → hash/deduplicate → create version and chunks → index → return source/version identifiers.

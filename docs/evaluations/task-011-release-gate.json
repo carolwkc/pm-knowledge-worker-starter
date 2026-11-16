@@ -1,0 +1,349 @@
+{
+  "passed": true,
+  "failures": [],
+  "budgets": {
+    "5": {
+      "legacy": {
+        "keyword": {
+          "negative_abstention": {
+            "value": 0.1,
+            "numerator": 1,
+            "denominator": 10
+          },
+          "positive_abstention": {
+            "value": 0.0,
+            "numerator": 0,
+            "denominator": 30
+          },
+          "citation_integrity": {
+            "value": 1.0,
+            "numerator": 117,
+            "denominator": 117
+          },
+          "evidence_precision": {
+            "value": 0.3162393162393162,
+            "numerator": 37,
+            "denominator": 117
+          },
+          "evidence_recall": {
+            "value": 0.9166666666666666,
+            "numerator": 27.5,
+            "denominator": 30
+          }
+        },
+        "semantic": {
+          "negative_abstention": {
+            "value": 0.2,
+            "numerator": 2,
+            "denominator": 10
+          },
+          "positive_abstention": {
+            "value": 0.0,
+            "numerator": 0,
+            "denominator": 30
+          },
+          "citation_integrity": {
+            "value": 1.0,
+            "numerator": 109,
+            "denominator": 109
+          },
+          "evidence_precision": {
+            "value": 0.3669724770642202,
+            "numerator": 40,
+            "denominator": 109
+          },
+          "evidence_recall": {
+            "value": 1.0,
+            "numerator": 30.0,
+            "denominator": 30
+          }
+        },
+        "hybrid": {
+          "negative_abstention": {
+            "value": 0.1,
+            "numerator": 1,
+            "denominator": 10
+          },
+          "positive_abstention": {
+            "value": 0.0,
+            "numerator": 0,
+            "denominator": 30
+          },
+          "citation_integrity": {
+            "value": 1.0,
+            "numerator": 117,
+            "denominator": 117
+          },
+          "evidence_precision": {
+            "value": 0.3418803418803419,
+            "numerator": 40,
+            "denominator": 117
+          },
+          "evidence_recall": {
+            "value": 1.0,
+            "numerator": 30.0,
+            "denominator": 30
+          }
+        }
+      },
+      "selected": {
+        "keyword": {
+          "negative_abstention": {
+            "value": 0.1,
+            "numerator": 1,
+            "denominator": 10
+          },
+          "positive_abstention": {
+            "value": 0.0,
+            "numerator": 0,
+            "denominator": 30
+          },
+          "citation_integrity": {
+            "value": 1.0,
+            "numerator": 114,
+            "denominator": 114
+          },
+          "evidence_precision": {
+            "value": 0.32456140350877194,
+            "numerator": 37,
+            "denominator": 114
+          },
+          "evidence_recall": {
+            "value": 0.9166666666666666,
+            "numerator": 27.5,
+            "denominator": 30
+          }
+        },
+        "semantic": {
+          "negative_abstention": {
+            "value": 0.2,
+            "numerator": 2,
+            "denominator": 10
+          },
+          "positive_abstention": {
+            "value": 0.0,
+            "numerator": 0,
+            "denominator": 30
+          },
+          "citation_integrity": {
+            "value": 1.0,
+            "numerator": 85,
+            "denominator": 85
+          },
+          "evidence_precision": {
+            "value": 0.47058823529411764,
+            "numerator": 40,
+            "denominator": 85
+          },
+          "evidence_recall": {
+            "value": 1.0,
+            "numerator": 30.0,
+            "denominator": 30
+          }
+        },
+        "hybrid": {
+          "negative_abstention": {
+            "value": 0.4,
+            "numerator": 4,
+            "denominator": 10
+          },
+          "positive_abstention": {
+            "value": 0.0,
+            "numerator": 0,
+            "denominator": 30
+          },
+          "citation_integrity": {
+            "value": 1.0,
+            "numerator": 81,
+            "denominator": 81
+          },
+          "evidence_precision": {
+            "value": 0.49382716049382713,
+            "numerator": 40,
+            "denominator": 81
+          },
+          "evidence_recall": {
+            "value": 1.0,
+            "numerator": 30.0,
+            "denominator": 30
+          }
+        }
+      },
+      "failures": []
+    },
+    "10": {
+      "legacy": {
+        "keyword": {
+          "negative_abstention": {
+            "value": 0.1,
+            "numerator": 1,
+            "denominator": 10
+          },
+          "positive_abstention": {
+            "value": 0.0,
+            "numerator": 0,
+            "denominator": 30
+          },
+          "citation_integrity": {
+            "value": 1.0,
+            "numerator": 117,
+            "denominator": 117
+          },
+          "evidence_precision": {
+            "value": 0.3247863247863248,
+            "numerator": 38,
+            "denominator": 117
+          },
+          "evidence_recall": {
+            "value": 0.95,
+            "numerator": 28.5,
+            "denominator": 30
+          }
+        },
+        "semantic": {
+          "negative_abstention": {
+            "value": 0.2,
+            "numerator": 2,
+            "denominator": 10
+          },
+          "positive_abstention": {
+            "value": 0.0,
+            "numerator": 0,
+            "denominator": 30
+          },
+          "citation_integrity": {
+            "value": 1.0,
+            "numerator": 109,
+            "denominator": 109
+          },
+          "evidence_precision": {
+            "value": 0.3669724770642202,
+            "numerator": 40,
+            "denominator": 109
+          },
+          "evidence_recall": {
+            "value": 1.0,
+            "numerator": 30.0,
+            "denominator": 30
+          }
+        },
+        "hybrid": {
+          "negative_abstention": {
+            "value": 0.1,
+            "numerator": 1,
+            "denominator": 10
+          },
+          "positive_abstention": {
+            "value": 0.0,
+            "numerator": 0,
+            "denominator": 30
+          },
+          "citation_integrity": {
+            "value": 1.0,
+            "numerator": 117,
+            "denominator": 117
+          },
+          "evidence_precision": {
+            "value": 0.3418803418803419,
+            "numerator": 40,
+            "denominator": 117
+          },
+          "evidence_recall": {
+            "value": 1.0,
+            "numerator": 30.0,
+            "denominator": 30
+          }
+        }
+      },
+      "selected": {
+        "keyword": {
+          "negative_abstention": {
+            "value": 0.1,
+            "numerator": 1,
+            "denominator": 10
+          },
+          "positive_abstention": {
+            "value": 0.0,
+            "numerator": 0,
+            "denominator": 30
+          },
+          "citation_integrity": {
+            "value": 1.0,
+            "numerator": 115,
+            "denominator": 115
+          },
+          "evidence_precision": {
+            "value": 0.33043478260869563,
+            "numerator": 38,
+            "denominator": 115
+          },
+          "evidence_recall": {
+            "value": 0.95,
+            "numerator": 28.5,
+            "denominator": 30
+          }
+        },
+        "semantic": {
+          "negative_abstention": {
+            "value": 0.2,
+            "numerator": 2,
+            "denominator": 10
+          },
+          "positive_abstention": {
+            "value": 0.0,
+            "numerator": 0,
+            "denominator": 30
+          },
+          "citation_integrity": {
+            "value": 1.0,
+            "numerator": 85,
+            "denominator": 85
+          },
+          "evidence_precision": {
+            "value": 0.47058823529411764,
+            "numerator": 40,
+            "denominator": 85
+          },
+          "evidence_recall": {
+            "value": 1.0,
+            "numerator": 30.0,
+            "denominator": 30
+          }
+        },
+        "hybrid": {
+          "negative_abstention": {
+            "value": 0.4,
+            "numerator": 4,
+            "denominator": 10
+          },
+          "positive_abstention": {
+            "value": 0.0,
+            "numerator": 0,
+            "denominator": 30
+          },
+          "citation_integrity": {
+            "value": 1.0,
+            "numerator": 82,
+            "denominator": 82
+          },
+          "evidence_precision": {
+            "value": 0.4878048780487805,
+            "numerator": 40,
+            "denominator": 82
+          },
+          "evidence_recall": {
+            "value": 1.0,
+            "numerator": 30.0,
+            "denominator": 30
+          }
+        }
+      },
+      "failures": []
+    }
+  },
+  "dataset_sha256": "76c75a7251abd05c1893dc2cb1fc6643a9d92e0834d5a0d87a0f6339baaeb177",
+  "reports": {
+    "docs/evaluations/task-011-validation-k5.json": "d7be9be54fcf28d71ffeed531cd9024bd2ad4a34d06813690dce37462ad7bc7e",
+    "docs/evaluations/task-011-validation-k10.json": "ab4c5801c7a045949477da9fa21d728690d6670e8eed86718f59f3e85d786f06"
+  }
+}

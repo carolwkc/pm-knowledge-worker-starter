@@ -12,6 +12,8 @@ remains the default.
 
 Task 010 adds a larger synthetic pilot evaluation baseline for retrieval, quoted
 answers and permission/version integrity; it changes no product endpoints or ranking.
+Task 011 adds conservative quotation selection and paired held-out validation;
+its release gates passed, so the selector is now the `/ask` default. Search is unchanged.
 
 For a single inventory of what is built and step-by-step end-to-end verification
 instructions, see [Capabilities and end-to-end testing](docs/CAPABILITIES_AND_TESTING.md).
@@ -673,7 +675,7 @@ DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55440/pmknowled
 # Offline, model-free baseline:
 DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55440/pmknowledge_test \
   uv run python -m pmknowledge.evaluation \
-  --cases apps/api/evaluation/pilot-cases.json --modes keyword --k 10
+  --cases apps/api/evaluation/pilot-cases.json --modes keyword --k 10 --answer-policy legacy
 
 # First explicitly download the existing public model if it is not cached.
 # This downloads weights; no document text leaves the host.
@@ -684,14 +686,17 @@ EMBEDDING_CACHE_DIR=.context/embedding-models HF_HUB_OFFLINE=0 \
 DATABASE_URL=postgresql+psycopg://pmknowledge:localdev@localhost:55440/pmknowledge_test \
 EMBEDDING_CACHE_DIR=.context/embedding-models HF_HUB_OFFLINE=1 \
   uv run python -m pmknowledge.evaluation \
-  --cases apps/api/evaluation/pilot-cases.json --modes keyword semantic hybrid --k 10
+  --cases apps/api/evaluation/pilot-cases.json --modes keyword semantic hybrid --k 10 --answer-policy legacy
 ```
 
-The CLI retains its existing defaults (Task 002 cases, all modes, k=3). Keyword-only
+The CLI retains its dataset/mode/budget defaults (Task 002 cases, all modes, k=3).
+Task 011 defaults the answer policy to `selected`; explicitly request `legacy` to
+reproduce Task 010's first-three-hits policy, as above. Keyword-only
 runs never load embeddings. Model modes fail explicitly when cached weights are
 unavailable; there is no automatic download or mode substitution.
 
-JSON report version 2 preserves recall@k, MRR@k and negative-query no-evidence accuracy.
+The recorded Task 010 artifact uses report version 2. Current report version 3
+preserves recall@k, MRR@k and negative-query no-evidence accuracy.
 It separately measures actual ask-service answers, still capped at three citations:
 
 - **Citation integrity:** citations whose identity, workspace, latest version,
@@ -716,9 +721,39 @@ report is presented as a completed baseline. Reports contain synthetic questions
 quotes and case-level rankings plus dataset/model/runtime provenance.
 
 These measurements do not establish semantic truth, contradiction resolution or pilot
-readiness. Existing UUID tie behavior can change rankings across fresh runs. Ranking
-and thresholds are unchanged. See [Task 010 verification and follow-up](docs/TASK_010.md)
+readiness. Existing UUID tie behavior can change rankings across fresh runs. Search
+ranking and retrieval thresholds are unchanged; Task 011 adds answer-only selection.
+See [Task 010 verification and follow-up](docs/TASK_010.md)
 and [specification](tasks/010-pilot-evaluation.md).
+
+## Task 011: conservative answer evidence selection
+
+`/ask` now selects from the existing bounded search candidates using frozen English
+lexical-coverage and raw-cosine rules, removes exact duplicate excerpt strings, then
+quotes up to three complete chunks in candidate order. `limit` still bounds candidates
+(default 5, range 1–20). Search ranking, API fields, citations and feedback formats
+are unchanged. An empty English lexeme set produces insufficient evidence; explicit
+unavailable semantic/hybrid modes still return `503`.
+
+Keyword selection requires positive overlap. Semantic/hybrid can qualify lexically
+(coverage 0.30/0.80 respectively) or with raw cosine at least 0.65 and the configured
+similarity floor. Neither fusion scores nor keyword ranks are cosine scores.
+These rules improve quotation selection, but do not establish that a requested
+fact is present. Keyword false positives and unsupported exact-fact answers remain.
+
+The policy passed paired held-out gates at k=5 and k=10 with no evidence-recall loss.
+At k=5, mean precision across modes improved from 34.2% to 43.0%; mean negative
+answer abstention improved from 13.3% to 23.3%. These are small synthetic measurements,
+not pilot readiness or semantic-truth claims. Original Task 002/010 artifacts remain
+unchanged. See [Task 011 results and reproduction commands](docs/TASK_011.md) and
+[specification](tasks/011-answer-evidence-selection.md).
+
+The operator evaluator accepts `--answer-policy legacy|selected` (default selected).
+Version 3 reports paired answers on identical captured candidates, policy thresholds,
+and positive/negative **answer** abstention with counts. Existing no-evidence accuracy
+still describes empty **search** results. Integrity-only evaluator exit semantics
+remain unchanged; the separate `selection_benchmark validate` command exits 1 on a
+completed quality gate failure. Neither command changes the production policy.
 
 ## Tests and checks
 

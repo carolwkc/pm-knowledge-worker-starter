@@ -8,6 +8,7 @@ from fastapi import HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from pmknowledge.answer_selection import DEFAULT_ANSWER_POLICY, AnswerPolicy
 from pmknowledge.auth import Principal, create_user
 from pmknowledge.documents import ingest, read_source_version
 from pmknowledge.embeddings import Embedder
@@ -138,7 +139,12 @@ def audit_answer(
 
 
 def isolation_probes(
-    session: Session, mode: RetrievalMode, embedder: Embedder | None, min_score: float
+    session: Session,
+    mode: RetrievalMode,
+    embedder: Embedder | None,
+    min_score: float,
+    *,
+    answer_policy: AnswerPolicy = DEFAULT_ANSWER_POLICY,
 ) -> dict[str, object]:
     """Probe workspaces never enter benchmark rankings or relevance denominators."""
     user = create_user(session, "Synthetic probe owner")
@@ -196,6 +202,7 @@ def isolation_probes(
             mode=mode,
             embedder=embedder,
             min_score=min_score,
+            answer_policy=answer_policy,
         )
         for evidence in [*hits, *answer.sources]:
             failures.extend(audit_evidence(session, own.id, evidence, principal))
