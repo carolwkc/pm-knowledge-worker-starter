@@ -18,6 +18,10 @@ its release gates passed, so the selector is now the `/ask` default. Search is u
 Task 012 adds an offline human review workflow and a fresh 72-item synthetic review
 packet. Human findings remain pending; production answer behavior is unchanged.
 
+Task 013 records a separate AI review of those 72 responses and offline traces of
+authored/AI-cited evidence through retrieved candidates and emitted quotations.
+AI findings are diagnostic interpretations; the human judgments remain blank.
+
 For a single inventory of what is built and step-by-step end-to-end verification
 instructions, see [Capabilities and end-to-end testing](docs/CAPABILITIES_AND_TESTING.md).
 
@@ -785,6 +789,37 @@ knowledge promotion or truth. Counts include pending and uncertain items; rates 
 pending, uncertain and abstaining items. Exit 0 means valid input, never quality passed;
 invalid operations exit 2. See [Task 012 verification and runbook](docs/TASK_012.md)
 for fields, evidence references, capture reproduction and limitations.
+
+## Task 013: offline AI review diagnostics
+
+The [AI review](docs/evaluations/task-013-ai-review.json) records one agent's verdicts,
+rationales, original source spans and reviewer provenance. Its model is explicitly
+unknown. It is separate from the unchanged Task 012 human form. The
+[diagnostic report](docs/evaluations/task-013-diagnostics/report.md) links findings and
+prioritized recommendations to all 72 item IDs; the adjacent `diagnostics.json`
+contains reproducible counts and per-span traces.
+
+```sh
+uv run python -m pmknowledge.support_diagnostics \
+  --bundle docs/evaluations/task-012-review \
+  --ai-review docs/evaluations/task-013-ai-review.json \
+  --output-dir .context/task013-diagnostics
+```
+
+Use a new output directory outside the input bundle on each run. This command needs
+no database, model or network. It checks original bundle integrity, AI attribution,
+manifest/rubric binding, every item and evidence reference before writing deterministic
+`diagnostics.json` and `report.md`. Exit 0 means valid output, not a quality pass;
+invalid input, existing output or execution failure exits 2 with redacted diagnostics.
+
+AI verdicts: 29 fully supported, 1 partially supported, 24 unsupported and 18
+conflicting. All 72 captured responses were `grounded`; none abstained. These numbers
+describe only this authored synthetic packet, not representative performance or human
+agreement. Authored support labels, AI-cited evidence and computed containment remain
+separate. Missing spans among five candidates do not imply missing evidence in the
+corpus. No policy is tuned or promoted; Task 012 is observed diagnostic data, not fresh
+validation. See [Task 013 contracts](tasks/013-support-diagnostics.md) and
+[verification and limitations](docs/TASK_013.md).
 
 ## Tests and checks
 

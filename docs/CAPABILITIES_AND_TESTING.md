@@ -1,6 +1,6 @@
 # Capabilities and end-to-end testing
 
-Coverage: Tasks 001–012. All supplied content is synthetic.
+Coverage: Tasks 001–013. All supplied content is synthetic.
 
 This document is the single inventory of what PM Knowledge Worker currently does and
 how to verify it end to end. [README.md](../README.md) remains canonical for per-task
@@ -9,7 +9,7 @@ document must be corrected.
 
 ## Purpose and scope
 
-- Applies to the implementation through Tasks 001–012.
+- Applies to the implementation through Tasks 001–013.
 - Lists user-visible capabilities, their API endpoints, minimum workspace role and
   key source files.
 - Provides a repeatable local runbook: Docker Compose quickstart, identity/workspace
@@ -36,6 +36,7 @@ Each row names the endpoint template literally as `` `METHOD /api/v1/path` `` wi
 | Web and operations | React SPA at `/` and `/assets`; public `GET /health` and `/docs`; structured request logs; explicit Alembic migrations; optional local CPU embeddings | No `/api/v1` routes | n/a | `apps/web/src/App.tsx`, `apps/web/src/useKnowledge.ts`, `apps/api/src/pmknowledge/main.py`, `compose.yaml`, `alembic.ini` |
 | Pilot evaluation | Offline synthetic retrieval/answer benchmark; explicit modes and answer policy, paired first-three/selected answers on identical candidates, span relevance, independent citation checks, workspace/version probes, bounded development calibration and held-out release gates; rollback-only fixtures | No HTTP endpoints; operator CLI | Database operator | `apps/api/src/pmknowledge/evaluation.py`, `apps/api/src/pmknowledge/evaluation_checks.py`, `apps/api/src/pmknowledge/selection_benchmark.py` |
 | Human support review | Offline Markdown/JSON review bundle for exact answers and the full corpus, integrity-bound human judgments and completion/uncertainty/support summaries; fresh 72-item cohort, all human judgments pending | No HTTP endpoints; operator CLI (`support_review export`, `support_review summarize`) | Local operator with authorized capture files; capture generation needs database operator access | `apps/api/src/pmknowledge/support_review.py` |
+| AI support diagnosis | Separately attributed 72-item AI review; offline authored/AI evidence traces through ranked candidates and emitted quotations; candidate/selection gaps and AI-reviewed missing-fact/conflict findings | No HTTP endpoints; operator CLI (`support_diagnostics`) | Local operator with authorized bundle/review files | `apps/api/src/pmknowledge/support_diagnostics.py` |
 
 ## Roles and permissions
 
@@ -351,6 +352,7 @@ against the test database automatically.
 | Retrieval and evaluation | `test_semantic.py`, `test_fusion.py`, `test_evaluation.py`, `test_pilot_evaluation.py` |
 | Answer selection and release gates | `test_answer_selection.py`, `test_selection_benchmark.py` |
 | Offline human support review | `test_support_review.py` (corpus freeze, export/summary, tampering, Markdown safety and controlled-encoder integration) |
+| Offline AI support diagnosis | `test_support_diagnostics.py` (AI attribution, integrity, evidence traces, canonical counts, inert/deterministic output and CLI) |
 | Decisions | `test_decisions.py`, `test_decision_extraction.py`, `test_decision_concurrency.py`, `test_decision_migration.py` |
 | Feedback | `test_feedback.py`, `test_feedback_migration.py` |
 | Web serving and health | `test_web.py`, `test_health.py` |
@@ -458,6 +460,28 @@ need no database or model, check provenance/settings/evidence bindings, and exit
 valid blank/partial reviews or 2 for invalid input. Human verdicts are interpretations;
 fully supported requires quoted support plus no unresolved same-scope/time corpus
 conflict. No production behavior, policy promotion or human finding is implied.
+
+Task 013 separately records one AI agent's review of the Task 012 packet. Human forms
+remain blank. Reproduce its deterministic `diagnostics.json` and `report.md` without
+database/model/network access:
+
+```sh
+uv run python -m pmknowledge.support_diagnostics \
+  --bundle docs/evaluations/task-012-review \
+  --ai-review docs/evaluations/task-013-ai-review.json \
+  --output-dir .context/task013-diagnostics
+```
+
+The output must be a new directory outside the input bundle. Exit 0 indicates valid
+output, not quality; failures exit 2 with redacted diagnostics. Every item needs an
+explicit AI verdict/rationale (uncertain is valid), bound manifest/rubric and valid
+original evidence references. No inference is performed. Authored-label gaps and
+AI-cited-evidence gaps are separate overlapping findings; candidate absence is limited
+to the captured budget. The [report](evaluations/task-013-diagnostics/report.md) records
+29 full, 1 partial, 24 unsupported and 18 conflicting AI judgments across 72 grounded
+responses, without claiming human agreement or representative performance. See
+[Task 013](TASK_013.md) for schema, tests, limitations and prioritized handoff.
+This does not change retrieval, answers, policy settings, roles or endpoints.
 
 ## Keeping this document current
 

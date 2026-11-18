@@ -33,6 +33,10 @@ See the historical [Task 004 verification and limitations](docs/TASK_004.md).
   synthetic cohort, integrity-bound Markdown/JSON review bundle and judgment summaries.
   Review-ready materials are delivered; human findings remain pending.
   See [specification](tasks/012-human-support-review.md) and [verification](docs/TASK_012.md).
+- Task 013: Separate AI review of all 72 Task 012 responses and reproducible offline
+  diagnosis of candidate/selection gaps, missing-fact responses and unresolved conflicts.
+  Human judgments remain pending; no production policy change or quality gate.
+  See [specification](tasks/013-support-diagnostics.md) and [verification](docs/TASK_013.md).
 - Later tasks: informed by pilot feedback.
 
 ## Milestone 3: Agent Harness
